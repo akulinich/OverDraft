@@ -409,6 +409,18 @@ function setupSettingsModal() {
       renderer.applyTheme(theme);
     });
   });
+  
+  // Force refresh button - clears cache and reloads
+  document.getElementById('force-refresh')?.addEventListener('click', () => {
+    // Clear service worker caches if any
+    if ('caches' in window) {
+      caches.keys().then(names => names.forEach(name => caches.delete(name)));
+    }
+    // Force reload with cache-busting query parameter
+    const url = new URL(window.location.href);
+    url.searchParams.set('_refresh', Date.now().toString());
+    window.location.href = url.toString();
+  });
 }
 
 /**

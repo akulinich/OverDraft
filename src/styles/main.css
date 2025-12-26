@@ -456,6 +456,12 @@ body::before {
   background: rgba(0, 240, 255, 0.05);
 }
 
+.settings-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: var(--space-xs);
+}
+
 /* Main Content */
 .app-main {
   flex: 1;
