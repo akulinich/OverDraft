@@ -8,6 +8,7 @@ import * as store from './state/store.js';
 import * as renderer from './ui/renderer.js';
 import * as events from './ui/events.js';
 import { createPollingManager } from './utils/polling.js';
+import { getVersionString, getBuildInfo } from './version.js';
 
 /** @type {ReturnType<typeof createPollingManager>|null} */
 let pollingManager = null;
@@ -178,6 +179,22 @@ function onPollingIntervalChange(interval) {
 async function init() {
   if (config.isDev) {
     console.log('[OverDraft] Initializing in development mode');
+  }
+  
+  // Display version
+  const versionEl = document.getElementById('app-version');
+  if (versionEl) {
+    versionEl.textContent = getVersionString();
+  }
+  
+  // Display version in settings
+  const settingsVersionEl = document.getElementById('settings-version');
+  const settingsBuildEl = document.getElementById('settings-build-time');
+  if (settingsVersionEl) {
+    settingsVersionEl.textContent = getVersionString();
+  }
+  if (settingsBuildEl) {
+    settingsBuildEl.textContent = getBuildInfo();
   }
   
   // Initialize state from localStorage

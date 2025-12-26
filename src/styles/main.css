@@ -712,6 +712,33 @@ body::before {
   animation: none;
 }
 
+.version-info {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  opacity: 0.6;
+  margin-left: auto;
+}
+
+.version-section {
+  border-top: 1px solid var(--border-color);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-lg);
+}
+
+.version-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.version-details .build-time {
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }

@@ -1,11 +1,14 @@
 {
   "name": "overdraft",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version",
     "preview": "vite preview",
     "lint": "eslint src/js --ext .js"
   },
@@ -14,5 +17,3 @@
     "eslint": "^8.57.0"
   }
 }
-
-
