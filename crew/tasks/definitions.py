@@ -57,10 +57,21 @@ def create_architecture_task(agent: Agent, analysis_task: Task) -> Task:
     return Task(
         description="""Design the software architecture based on the user stories.
 
-## Your Deliverables
-1. Read the user stories from `docs/user_stories.md`
+## IMPORTANT: Existing Architecture Document
+1. **ALWAYS** read the existing architecture document from `docs/architecture.md` first (if it exists)
+2. This document contains the established architecture that must be followed
+3. **ONLY YOU (Architect) can modify this document** - other agents can only read it
+4. You may decide NOT to modify the architecture document if:
+   - The existing architecture already covers the current task requirements
+   - The task can be implemented within the existing architecture without changes
+   - You determine that no architectural changes are needed for this specific task
+5. If you decide to modify the architecture document, update `docs/architecture.md` directly
 
-2. Create a file `docs/architecture.md` with:
+## Your Deliverables
+1. Read the existing architecture from `docs/architecture.md` (if it exists)
+2. Read the user stories from `docs/user_stories.md`
+
+3. Create or update the file `docs/architecture.md` with:
    - High-level architecture overview
    - Module/package structure
    - Class definitions with:
@@ -71,15 +82,19 @@ def create_architecture_task(agent: Agent, analysis_task: Task) -> Task:
    - Data models / schemas
    - Error types to define
    - File structure to create
+   
+   Note: This `docs/architecture.md` is the main architecture document. If you modified it, 
+   ensure it remains consistent and complete.
 
-3. Follow these principles:
+4. Follow these principles:
    - SOLID principles
    - Single responsibility per class/module
    - Dependency injection for testability
    - Clear interfaces between components
    - No circular dependencies
+   - Consistency with existing architecture in `docs/architecture.md` (if it exists)
 
-4. The architecture should be implementable in Python with:
+5. The architecture should be implementable in Python with:
    - Type hints throughout
    - Dataclasses or Pydantic for data models
    - Abstract base classes for interfaces (if needed)
@@ -107,9 +122,13 @@ def create_development_task(agent: Agent, architecture_task: Task) -> Task:
     return Task(
         description="""Implement the code based on the architecture specification.
 
+## IMPORTANT: Architecture Document
+**ALWAYS** read the existing architecture document from `docs/architecture.md` first.
+This is the authoritative architecture document that you must follow.
+
 ## Your Deliverables
-1. Read the architecture from `docs/architecture.md`
-2. Read the user stories from `docs/user_stories.md`
+1. **ALWAYS** read the existing architecture from `docs/architecture.md` first
+3. Read the user stories from `docs/user_stories.md`
 
 3. Implement all modules and classes as specified:
    - Create proper package structure with __init__.py files
@@ -150,10 +169,14 @@ def create_testing_task(agent: Agent, architecture_task: Task) -> Task:
     return Task(
         description="""Write comprehensive pytest tests based on user stories and architecture.
 
+## IMPORTANT: Architecture Document
+**ALWAYS** read the existing architecture document from `docs/architecture.md` first.
+This is the authoritative architecture document that you must follow.
+
 ## Your Deliverables
-1. Read the user stories from `docs/user_stories.md`
-2. Read the architecture from `docs/architecture.md`
-3. List and read the implemented code in `src/`
+1. **ALWAYS** read the existing architecture from `docs/architecture.md` first
+2. Read the user stories from `docs/user_stories.md`
+4. List and read the implemented code in `src/`
 
 4. Create test files in `tests/` directory:
    - One test file per module (test_<module_name>.py)
@@ -272,10 +295,14 @@ def create_manager_validation_architecture_task(
 ## Original Task Description
 {task_description}
 
+## IMPORTANT: Architecture Document
+**ALWAYS** read the existing architecture document from `docs/architecture.md` first.
+This is the authoritative architecture document that must be followed.
+
 ## Your Process
 1. Read the original task description above
-2. Read the user stories from `docs/user_stories.md`
-3. Read the architecture from `docs/architecture.md`
+2. **ALWAYS** read the existing architecture from `docs/architecture.md` first
+3. Read the user stories from `docs/user_stories.md`
 4. Validate that:
    - Architecture covers all user stories
    - Architecture aligns with the original task requirements
@@ -337,10 +364,14 @@ def create_manager_validation_development_task(
 ## Original Task Description
 {task_description}
 
+## IMPORTANT: Architecture Document
+**ALWAYS** read the existing architecture document from `docs/architecture.md` first.
+This is the authoritative architecture document that must be followed.
+
 ## Your Process
 1. Read the original task description above
-2. Read the architecture from `docs/architecture.md`
-3. List and read the implemented code files in `src/`
+2. **ALWAYS** read the existing architecture from `docs/architecture.md` first
+4. List and read the implemented code files in `src/`
 4. Validate that:
    - Implementation follows the architecture specification
    - All classes and modules from architecture are implemented
@@ -403,10 +434,15 @@ def create_manager_validation_testing_task(
 ## Original Task Description
 {task_description}
 
+## IMPORTANT: Architecture Document
+**ALWAYS** read the existing architecture document from `docs/architecture.md` first.
+This is the authoritative architecture document that must be followed.
+
 ## Your Process
 1. Read the original task description above
-2. Read the user stories from `docs/user_stories.md`
-3. List and read test files in `tests/`
+2. **ALWAYS** read the existing architecture from `docs/architecture.md` first
+3. Read the user stories from `docs/user_stories.md`
+4. List and read test files in `tests/`
 4. Validate test quality:
    - Tests cover all user stories and acceptance criteria
    - Tests are well-structured and follow pytest conventions
