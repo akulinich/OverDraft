@@ -293,11 +293,12 @@ export function updateTabsVisibility(showTabs) {
 
 /**
  * Shows a specific tab content
- * @param {'players'|'teams'} tab 
+ * @param {'players'|'teams'|'draft'} tab 
  */
 export function showTab(tab) {
   const playersDisplay = document.getElementById('data-display');
   const teamsDisplay = document.getElementById('teams-display');
+  const draftDisplay = document.getElementById('draft-display');
   
   if (playersDisplay) {
     playersDisplay.hidden = tab !== 'players';
@@ -305,8 +306,11 @@ export function showTab(tab) {
   if (teamsDisplay) {
     teamsDisplay.hidden = tab !== 'teams';
   }
+  if (draftDisplay) {
+    draftDisplay.hidden = tab !== 'draft';
+  }
   
-  // Update tab button states
+  // Update tab button states (draft has no tab button, only accessible via team click)
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
@@ -451,6 +455,269 @@ export function showTeamsNotConfigured() {
       const settingsBtn = document.getElementById('settings-btn');
       settingsBtn?.click();
     });
+  }
+}
+
+// ============================================================================
+// Draft View Rendering
+// ============================================================================
+
+/**
+ * @typedef {import('../state/store.js').Player} Player
+ * @typedef {import('../validation/schema.js').Team} Team
+ * @typedef {import('../validation/schema.js').TeamPlayer} TeamPlayer
+ */
+
+/**
+ * Renders the complete draft view for a team
+ * @param {Team} team - The selected team
+ * @param {{tank: Player[], dps: Player[], support: Player[]}} unselectedByRole - Unselected players grouped by role
+ */
+export function renderDraftView(team, unselectedByRole) {
+  renderDraftHeader(team);
+  renderDraftTeamPanel(team);
+  renderDraftPlayerLists(unselectedByRole);
+  clearDraftPlayerDescription();
+}
+
+/**
+ * Renders the draft view header with team name
+ * @param {Team} team
+ */
+function renderDraftHeader(team) {
+  const nameEl = document.getElementById('draft-team-name');
+  const ratingEl = document.getElementById('draft-team-rating');
+  
+  if (nameEl) {
+    nameEl.textContent = team.name;
+  }
+  if (ratingEl) {
+    ratingEl.textContent = team.avgRating ? `Avg: ${team.avgRating}` : '';
+  }
+}
+
+/**
+ * Renders the current team panel with 5 slots
+ * @param {Team} team
+ */
+function renderDraftTeamPanel(team) {
+  const slotsContainer = document.getElementById('draft-team-slots');
+  if (!slotsContainer) return;
+  
+  // Expected slot structure: 1 tank, 2 dps, 2 support
+  const expectedSlots = [
+    { role: 'tank', index: 0 },
+    { role: 'dps', index: 0 },
+    { role: 'dps', index: 1 },
+    { role: 'support', index: 0 },
+    { role: 'support', index: 1 }
+  ];
+  
+  // Group players by role
+  const playersByRole = {
+    tank: team.players.filter(p => p.role === 'tank'),
+    dps: team.players.filter(p => p.role === 'dps'),
+    support: team.players.filter(p => p.role === 'support')
+  };
+  
+  slotsContainer.innerHTML = '';
+  
+  expectedSlots.forEach(slot => {
+    const player = playersByRole[slot.role][slot.index];
+    const slotEl = createDraftSlot(slot.role, player);
+    slotsContainer.appendChild(slotEl);
+  });
+}
+
+/**
+ * Creates a draft slot element
+ * @param {'tank'|'dps'|'support'} role
+ * @param {TeamPlayer|undefined} player
+ * @returns {HTMLElement}
+ */
+function createDraftSlot(role, player) {
+  const slotEl = createElement('div', { 
+    className: `draft-slot ${player ? 'filled' : 'empty'}`,
+    dataset: { role }
+  });
+  
+  if (player) {
+    slotEl.dataset.nickname = player.nickname;
+  }
+  
+  // Role badge
+  const roleBadge = createElement('span', { 
+    className: `slot-role-badge ${role}` 
+  }, getRoleBadgeLabel(role));
+  slotEl.appendChild(roleBadge);
+  
+  // Player name
+  const nameEl = createElement('span', { className: 'slot-player-name' }, 
+    player ? player.nickname : '-');
+  slotEl.appendChild(nameEl);
+  
+  // Rating
+  if (player) {
+    const ratingClass = getRatingClass(String(player.rating));
+    const ratingEl = createElement('span', { 
+      className: `slot-player-rating ${ratingClass}` 
+    }, String(player.rating));
+    slotEl.appendChild(ratingEl);
+  } else {
+    slotEl.appendChild(createElement('span', { className: 'slot-player-rating' }, ''));
+  }
+  
+  return slotEl;
+}
+
+/**
+ * Renders the player description panel
+ * @param {Player} player
+ */
+export function renderDraftPlayerDescription(player) {
+  const container = document.getElementById('draft-player-details');
+  if (!container) return;
+  
+  const ratingClass = getRatingClass(String(player.rating));
+  
+  container.innerHTML = `
+    <div class="player-details-card">
+      <div class="player-details-header">
+        <span class="player-role-large ${player.role}">${getRoleBadgeLabel(player.role)}</span>
+        <h4 class="player-details-name">${escapeHtml(player.nickname)}</h4>
+      </div>
+      <div class="player-details-stats">
+        <div class="player-stat">
+          <span class="stat-label">Рейтинг</span>
+          <span class="stat-value ${ratingClass}">${player.rating}</span>
+        </div>
+        <div class="player-stat">
+          <span class="stat-label">Роль</span>
+          <span class="stat-value">${getRoleLabel(player.role)}</span>
+        </div>
+      </div>
+      ${player.heroes ? `
+        <div class="player-details-heroes">
+          <span class="stat-label">Герои</span>
+          <div class="heroes-list">${escapeHtml(player.heroes)}</div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+  
+  // Mark as selected in the container
+  container.classList.add('has-player');
+}
+
+/**
+ * Clears the player description panel
+ */
+export function clearDraftPlayerDescription() {
+  const container = document.getElementById('draft-player-details');
+  if (!container) return;
+  
+  container.innerHTML = `
+    <div class="player-details-empty">
+      <p>Выберите игрока для просмотра информации</p>
+    </div>
+  `;
+  container.classList.remove('has-player');
+}
+
+/**
+ * Gets human-readable role label
+ * @param {'tank'|'dps'|'support'} role
+ * @returns {string}
+ */
+function getRoleLabel(role) {
+  switch (role) {
+    case 'tank': return 'Танк';
+    case 'dps': return 'ДД';
+    case 'support': return 'Саппорт';
+    default: return role;
+  }
+}
+
+/**
+ * Renders the unselected players lists
+ * @param {{tank: Player[], dps: Player[], support: Player[]}} playersByRole
+ */
+function renderDraftPlayerLists(playersByRole) {
+  renderPlayerPoolColumn('draft-pool-tank', playersByRole.tank);
+  renderPlayerPoolColumn('draft-pool-dps', playersByRole.dps);
+  renderPlayerPoolColumn('draft-pool-support', playersByRole.support);
+}
+
+/**
+ * Renders a single player pool column
+ * @param {string} containerId
+ * @param {Player[]} players
+ */
+function renderPlayerPoolColumn(containerId, players) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  if (players.length === 0) {
+    container.innerHTML = '<div class="pool-empty">Нет игроков</div>';
+    return;
+  }
+  
+  players.forEach(player => {
+    const card = createPoolPlayerCard(player);
+    container.appendChild(card);
+  });
+}
+
+/**
+ * Creates a player card for the pool list
+ * @param {Player} player
+ * @returns {HTMLElement}
+ */
+function createPoolPlayerCard(player) {
+  const ratingClass = getRatingClass(String(player.rating));
+  
+  const card = createElement('div', { 
+    className: 'pool-player-card',
+    dataset: { nickname: player.nickname }
+  });
+  
+  // Nickname
+  const nameEl = createElement('span', { className: 'pool-player-name' }, player.nickname);
+  card.appendChild(nameEl);
+  
+  // Rating
+  const ratingEl = createElement('span', { 
+    className: `pool-player-rating ${ratingClass}` 
+  }, String(player.rating));
+  card.appendChild(ratingEl);
+  
+  return card;
+}
+
+/**
+ * Updates selected player highlight in draft view
+ * @param {string|null} nickname - Selected player nickname or null to clear
+ */
+export function updateDraftPlayerSelection(nickname) {
+  // Clear previous selection
+  document.querySelectorAll('.draft-slot.selected, .pool-player-card.selected').forEach(el => {
+    el.classList.remove('selected');
+  });
+  
+  if (!nickname) return;
+  
+  // Highlight in team slots
+  const teamSlot = document.querySelector(`.draft-slot[data-nickname="${CSS.escape(nickname)}"]`);
+  if (teamSlot) {
+    teamSlot.classList.add('selected');
+  }
+  
+  // Highlight in pool lists
+  const poolCard = document.querySelector(`.pool-player-card[data-nickname="${CSS.escape(nickname)}"]`);
+  if (poolCard) {
+    poolCard.classList.add('selected');
   }
 }
 

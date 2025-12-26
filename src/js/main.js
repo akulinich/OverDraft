@@ -9,6 +9,7 @@ import * as renderer from './ui/renderer.js';
 import * as events from './ui/events.js';
 import { createPollingManager } from './utils/polling.js';
 import { getVersionString, getBuildInfo } from './version.js';
+import { validateTeamsData } from './validation/schema.js';
 
 /** @type {ReturnType<typeof createPollingManager>|null} */
 let pollingManager = null;
@@ -137,7 +138,7 @@ async function onSheetConfigured() {
 
 /**
  * Called when tab changes
- * @param {'players'|'teams'} tab 
+ * @param {'players'|'teams'|'draft'} tab 
  */
 async function onTabChange(tab) {
   renderer.showTab(tab);
@@ -152,6 +153,7 @@ async function onTabChange(tab) {
       }
     }
   } else if (tab === 'teams') {
+    store.setSelectedTeam(null);
     const teamsData = store.getTeamsData();
     if (teamsData) {
       renderer.renderTeamsView(teamsData.headers, teamsData.data);
@@ -160,7 +162,88 @@ async function onTabChange(tab) {
     } else {
       renderer.showTeamsNotConfigured();
     }
+  } else if (tab === 'draft') {
+    const selectedTeam = store.getSelectedTeam();
+    if (selectedTeam) {
+      const teams = getParsedTeams();
+      const unselectedByRole = store.getUnselectedPlayersByRole(teams);
+      renderer.renderDraftView(selectedTeam, unselectedByRole);
+    }
   }
+}
+
+/**
+ * Gets parsed teams from cached teams data
+ * @returns {import('./validation/schema.js').Team[]}
+ */
+function getParsedTeams() {
+  const teamsData = store.getTeamsData();
+  if (!teamsData) return [];
+  
+  const result = validateTeamsData(teamsData.headers, teamsData.data);
+  return result.valid && result.data ? result.data.teams : [];
+}
+
+/**
+ * Called when a team card is clicked
+ * @param {string} teamName
+ */
+function onTeamSelect(teamName) {
+  const teams = getParsedTeams();
+  const team = teams.find(t => t.name === teamName);
+  
+  if (!team) {
+    console.warn('[App] Team not found:', teamName);
+    return;
+  }
+  
+  store.setSelectedTeam(team);
+  store.setActiveTab('draft');
+  onTabChange('draft');
+}
+
+/**
+ * Called when a player is selected in draft view
+ * @param {string} nickname
+ */
+function onPlayerSelect(nickname) {
+  const player = store.getPlayerByNickname(nickname);
+  
+  if (player) {
+    store.setSelectedPlayer(player);
+    renderer.renderDraftPlayerDescription(player);
+    renderer.updateDraftPlayerSelection(nickname);
+  } else {
+    // Player might be from team (TeamPlayer), create a minimal player object
+    const selectedTeam = store.getSelectedTeam();
+    if (selectedTeam) {
+      const teamPlayer = selectedTeam.players.find(
+        p => p.nickname.toLowerCase() === nickname.toLowerCase()
+      );
+      if (teamPlayer) {
+        // Create a Player-like object from TeamPlayer
+        const playerLike = {
+          nickname: teamPlayer.nickname,
+          role: teamPlayer.role,
+          rating: teamPlayer.rating,
+          heroes: '',
+          rawRow: []
+        };
+        renderer.renderDraftPlayerDescription(playerLike);
+        renderer.updateDraftPlayerSelection(nickname);
+      }
+    }
+  }
+}
+
+/**
+ * Called when back button in draft view is clicked
+ */
+function onDraftBack() {
+  store.setSelectedTeam(null);
+  store.setSelectedPlayer(null);
+  store.setActiveTab('teams');
+  onTabChange('teams');
 }
 
 /**
@@ -208,7 +291,10 @@ async function init() {
   events.initializeEvents({
     onSheetConfigured,
     onPollingIntervalChange,
-    onTabChange
+    onTabChange,
+    onTeamSelect,
+    onPlayerSelect,
+    onDraftBack
   });
   
   // Show tabs if teams sheet is configured

@@ -1039,3 +1039,404 @@ body::before {
   animation: rowHighlight 1s ease-out;
 }
 
+/* ============================================================================
+   Draft View Styles
+   ============================================================================ */
+
+/* Draft Header */
+.draft-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-xl);
+  padding-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.draft-team-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.draft-team-avg {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  padding: var(--space-xs) var(--space-md);
+  background: rgba(0, 240, 255, 0.1);
+  border-radius: var(--radius-md);
+  color: var(--accent-primary);
+}
+
+/* Draft Layout - 3 Column Grid */
+.draft-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr 400px;
+  gap: var(--space-xl);
+  min-height: 500px;
+}
+
+@media (max-width: 1200px) {
+  .draft-layout {
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+  }
+  
+  .draft-pool-panel {
+    order: 3;
+  }
+}
+
+/* Draft Panel Base */
+.draft-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.draft-panel-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Team Panel - Left Column */
+.draft-team-slots {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.draft-slot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.draft-slot:hover {
+  border-color: var(--accent-primary);
+  background: rgba(0, 240, 255, 0.03);
+}
+
+.draft-slot.selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+}
+
+.draft-slot.empty {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.draft-slot.empty:hover {
+  border-color: var(--border-color);
+  background: var(--bg-tertiary);
+}
+
+.slot-role-badge {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.slot-role-badge.tank {
+  background: rgba(250, 204, 21, 0.2);
+  color: #facc15;
+}
+
+.slot-role-badge.dps {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.slot-role-badge.support {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.slot-player-name {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draft-slot.empty .slot-player-name {
+  color: var(--text-muted);
+}
+
+.slot-player-rating {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  min-width: 40px;
+  text-align: right;
+}
+
+/* Player Details Panel - Center Column */
+.draft-player-details {
+  min-height: 200px;
+}
+
+.player-details-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.player-details-card {
+  animation: fadeIn 0.2s ease;
+}
+
+.player-details-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
+}
+
+.player-role-large {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+}
+
+.player-role-large.tank {
+  background: rgba(250, 204, 21, 0.2);
+  color: #facc15;
+}
+
+.player-role-large.dps {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.player-role-large.support {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.player-details-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.player-details-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+.player-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-value {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.stat-value.rating-bronze { color: #cd7f32; }
+.stat-value.rating-silver { color: #c0c0c0; }
+.stat-value.rating-gold { color: #ffd700; }
+.stat-value.rating-platinum { color: #4fd1c5; }
+.stat-value.rating-diamond { color: #60a5fa; }
+.stat-value.rating-master { color: #f59e0b; }
+.stat-value.rating-grandmaster { color: #ef4444; }
+.stat-value.rating-champion { color: #a855f7; }
+
+.player-details-heroes {
+  margin-top: var(--space-lg);
+}
+
+.heroes-list {
+  margin-top: var(--space-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* Pool Panel - Right Column */
+.draft-pool-lists {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-md);
+  height: calc(100% - 60px);
+}
+
+.draft-pool-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 300px;
+}
+
+.pool-column-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-md);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.pool-column-header.tank {
+  color: #facc15;
+}
+
+.pool-column-header.dps {
+  color: #ef4444;
+}
+
+.pool-column-header.support {
+  color: #22c55e;
+}
+
+.pool-role-badge {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+}
+
+.pool-role-badge.tank {
+  background: rgba(250, 204, 21, 0.2);
+}
+
+.pool-role-badge.dps {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.pool-role-badge.support {
+  background: rgba(34, 197, 94, 0.2);
+}
+
+.pool-player-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding-right: var(--space-xs);
+}
+
+.pool-player-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.pool-player-list::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+  border-radius: 2px;
+}
+
+.pool-player-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 2px;
+}
+
+.pool-player-list::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+.pool-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: var(--space-lg);
+}
+
+.pool-player-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pool-player-card:hover {
+  border-color: var(--accent-primary);
+  background: rgba(0, 240, 255, 0.03);
+}
+
+.pool-player-card.selected {
+  border-color: var(--accent-primary);
+  background: rgba(0, 240, 255, 0.08);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.15);
+}
+
+.pool-player-name {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pool-player-rating {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* Team Card clickable state */
+.team-card {
+  cursor: pointer;
+}
+
+/* Draft Display Hidden */
+#draft-display[hidden] {
+  display: none;
+}
+

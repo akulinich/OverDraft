@@ -8,6 +8,17 @@ import { getSheetKey } from '../utils/parser.js';
 /**
  * @typedef {import('../api/sheets.js').SheetData} SheetData
  * @typedef {import('../storage/persistence.js').SheetConfig} SheetConfig
+ * @typedef {import('../validation/schema.js').Team} Team
+ * @typedef {import('../validation/schema.js').TeamPlayer} TeamPlayer
+ */
+
+/**
+ * @typedef {Object} Player
+ * @property {string} nickname - Player nickname
+ * @property {'tank'|'dps'|'support'} role - Player role
+ * @property {number} rating - Player rating
+ * @property {string} heroes - Player heroes (comma-separated)
+ * @property {string[]} rawRow - Original row data from sheet
  */
 
 /**
@@ -16,11 +27,14 @@ import { getSheetKey } from '../utils/parser.js';
  * @property {SheetConfig[]} configuredSheets - User-configured sheets
  * @property {SheetConfig|null} teamsSheet - Teams sheet configuration
  * @property {SheetData|null} teamsData - Cached teams sheet data
+ * @property {Map<string, Player>} parsedPlayers - Parsed players by nickname
+ * @property {Team|null} selectedTeam - Currently selected team for draft view
+ * @property {Player|null} selectedPlayer - Currently selected player for details
  * @property {boolean} isLoading
  * @property {Map<string, Error>} errors
  * @property {number} pollingInterval
  * @property {'light'|'dark'} theme
- * @property {'players'|'teams'} activeTab - Currently active tab
+ * @property {'players'|'teams'|'draft'} activeTab - Currently active tab
  */
 
 /**
@@ -36,11 +50,29 @@ let state = {
   configuredSheets: [],
   teamsSheet: null,
   teamsData: null,
+  parsedPlayers: new Map(),
+  selectedTeam: null,
+  selectedPlayer: null,
   isLoading: false,
   errors: new Map(),
   pollingInterval: 1000,
   theme: 'dark',
   activeTab: 'players'
+};
+
+/** Column header patterns for player data parsing */
+const HEADER_PATTERNS = {
+  nickname: /^(никнейм|nickname|nick|имя|name|игрок|player)/i,
+  role: /^(роль|role)/i,
+  rating: /^(рейтинг|rating|sr|ранг|rank)/i,
+  heroes: /^(герои|heroes|hero|персонажи|characters)/i
+};
+
+/** Role normalization patterns */
+const ROLE_PATTERNS = {
+  tank: /^(танк|tanks?)/i,
+  dps: /^(дд|dd|dps|damage)/i,
+  support: /^(сапп?ы?|support|heal|саппорт)/i
 };
 
 /** @type {Set<StateListener>} */
@@ -149,6 +181,73 @@ export function replaceSheet(config) {
 }
 
 /**
+ * Normalizes role string to standard format
+ * @param {string} role
+ * @returns {'tank'|'dps'|'support'|null}
+ */
+function normalizeRole(role) {
+  if (!role || typeof role !== 'string') return null;
+  const trimmed = role.trim();
+  if (ROLE_PATTERNS.tank.test(trimmed)) return 'tank';
+  if (ROLE_PATTERNS.dps.test(trimmed)) return 'dps';
+  if (ROLE_PATTERNS.support.test(trimmed)) return 'support';
+  return null;
+}
+
+/**
+ * Finds column index by header pattern
+ * @param {string[]} headers
+ * @param {RegExp} pattern
+ * @returns {number} -1 if not found
+ */
+function findColumnIndex(headers, pattern) {
+  return headers.findIndex(h => pattern.test(h.trim()));
+}
+
+/**
+ * Parses players from sheet data
+ * @param {string[]} headers
+ * @param {string[][]} data
+ * @returns {Map<string, Player>}
+ */
+function parsePlayersFromSheet(headers, data) {
+  const players = new Map();
+  
+  const nicknameIdx = findColumnIndex(headers, HEADER_PATTERNS.nickname);
+  const roleIdx = findColumnIndex(headers, HEADER_PATTERNS.role);
+  const ratingIdx = findColumnIndex(headers, HEADER_PATTERNS.rating);
+  const heroesIdx = findColumnIndex(headers, HEADER_PATTERNS.heroes);
+  
+  if (nicknameIdx === -1) {
+    console.warn('[Store] Could not find nickname column in player sheet');
+    return players;
+  }
+  
+  for (const row of data) {
+    const nickname = row[nicknameIdx]?.trim();
+    if (!nickname) continue;
+    
+    const roleStr = roleIdx >= 0 ? row[roleIdx]?.trim() : '';
+    const role = normalizeRole(roleStr) || 'dps';
+    
+    const ratingStr = ratingIdx >= 0 ? row[ratingIdx]?.trim() : '0';
+    const rating = parseInt(ratingStr, 10) || 0;
+    
+    const heroes = heroesIdx >= 0 ? row[heroesIdx]?.trim() || '' : '';
+    
+    players.set(nickname.toLowerCase(), {
+      nickname,
+      role,
+      rating,
+      heroes,
+      rawRow: row
+    });
+  }
+  
+  return players;
+}
+
+/**
  * Updates cached sheet data
  * @param {SheetData} data 
  */
@@ -163,6 +262,9 @@ export function updateSheetData(data) {
   
   state.sheets.set(key, data);
   state.errors.delete(key);
+  
+  // Parse players from the sheet data
+  state.parsedPlayers = parsePlayersFromSheet(data.headers, data.data);
   
   if (hasChanged) {
     notify('sheetData');
@@ -295,7 +397,7 @@ export function hasTeamsSheet() {
 
 /**
  * Sets active tab
- * @param {'players'|'teams'} tab 
+ * @param {'players'|'teams'|'draft'} tab 
  */
 export function setActiveTab(tab) {
   state.activeTab = tab;
@@ -304,10 +406,105 @@ export function setActiveTab(tab) {
 
 /**
  * Gets active tab
- * @returns {'players'|'teams'}
+ * @returns {'players'|'teams'|'draft'}
  */
 export function getActiveTab() {
   return state.activeTab;
+}
+
+/**
+ * Gets parsed players map
+ * @returns {Map<string, Player>}
+ */
+export function getParsedPlayers() {
+  return state.parsedPlayers;
+}
+
+/**
+ * Gets a player by nickname (case-insensitive)
+ * @param {string} nickname
+ * @returns {Player|undefined}
+ */
+export function getPlayerByNickname(nickname) {
+  return state.parsedPlayers.get(nickname.toLowerCase());
+}
+
+/**
+ * Sets the selected team for draft view
+ * @param {Team|null} team
+ */
+export function setSelectedTeam(team) {
+  state.selectedTeam = team;
+  state.selectedPlayer = null;
+  notify('selectedTeam');
+}
+
+/**
+ * Gets the selected team
+ * @returns {Team|null}
+ */
+export function getSelectedTeam() {
+  return state.selectedTeam;
+}
+
+/**
+ * Sets the selected player for details panel
+ * @param {Player|null} player
+ */
+export function setSelectedPlayer(player) {
+  state.selectedPlayer = player;
+  notify('selectedPlayer');
+}
+
+/**
+ * Gets the selected player
+ * @returns {Player|null}
+ */
+export function getSelectedPlayer() {
+  return state.selectedPlayer;
+}
+
+/**
+ * Gets all player nicknames that are assigned to any team
+ * @param {Team[]} teams
+ * @returns {Set<string>}
+ */
+function getAssignedPlayerNicknames(teams) {
+  const assigned = new Set();
+  for (const team of teams) {
+    for (const player of team.players) {
+      assigned.add(player.nickname.toLowerCase());
+    }
+  }
+  return assigned;
+}
+
+/**
+ * Gets unselected players grouped by role
+ * @param {Team[]} teams - All teams to check against
+ * @returns {{tank: Player[], dps: Player[], support: Player[]}}
+ */
+export function getUnselectedPlayersByRole(teams) {
+  const assigned = getAssignedPlayerNicknames(teams);
+  
+  const result = {
+    tank: [],
+    dps: [],
+    support: []
+  };
+  
+  for (const player of state.parsedPlayers.values()) {
+    if (!assigned.has(player.nickname.toLowerCase())) {
+      result[player.role].push(player);
+    }
+  }
+  
+  // Sort each role by rating descending
+  result.tank.sort((a, b) => b.rating - a.rating);
+  result.dps.sort((a, b) => b.rating - a.rating);
+  result.support.sort((a, b) => b.rating - a.rating);
+  
+  return result;
 }
 
 
