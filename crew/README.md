@@ -240,15 +240,40 @@ All tools operate within the configured `output_dir` with path traversal protect
 The crew is executed via the CLI entry point:
 
 ```bash
+# Direct task description
 python -m crew.main "Task description"
+
+# From file
 python -m crew.main -f task.txt
+
+# From GitHub issue
+python -m crew.main "https://github.com/owner/repo/issues/2"
+
+# Custom output directory
 python -m crew.main -o ./custom_output "Task description"
+
+# Pipe input (also supports GitHub issue URLs)
+echo "Task description" | python -m crew.main
 ```
 
 **Configuration**:
 - `OPENAI_API_KEY`: Required environment variable
 - `OPENAI_MODEL`: Optional (defaults to `gpt-4o`)
 - `OUTPUT_DIR`: Optional (defaults to `./output`)
+- `GITHUB_TOKEN`: Optional - required for private repositories or higher API rate limits
+
+**Input Sources**:
+- Direct task description (string)
+- File (`-f` or `--file` flag)
+- GitHub issue URL (e.g., `https://github.com/owner/repo/issues/2`)
+- Standard input (piped input)
+
+**GitHub Issue Support**:
+- Automatically detects GitHub issue URLs
+- Fetches issue title and body from GitHub API
+- Works with public repositories without authentication
+- For private repositories, set `GITHUB_TOKEN` in `.env` file
+- Combines issue title and body into task description
 
 **Output Structure**:
 ```

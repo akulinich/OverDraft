@@ -1,9 +1,14 @@
 """CLI entry point for OverDraft development crew."""
 
 import argparse
+import json
 import os
+import re
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 from dotenv import load_dotenv
 
@@ -20,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "task",
         nargs="?",
-        help="Task description to implement (or use --file)",
+        help="Task description to implement, GitHub issue URL (e.g., https://github.com/owner/repo/issues/2), or use --file",
     )
     
     parser.add_argument(
@@ -52,8 +57,101 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def is_github_issue_url(url: str) -> bool:
+    """Check if the given string is a GitHub issue URL.
+    
+    Args:
+        url: String to check.
+    
+    Returns:
+        True if it's a GitHub issue URL, False otherwise.
+    """
+    pattern = r'^https?://github\.com/[^/]+/[^/]+/issues/\d+/?$'
+    return bool(re.match(pattern, url))
+
+
+def parse_github_issue_url(url: str) -> tuple[str, str, int]:
+    """Parse GitHub issue URL to extract owner, repo, and issue number.
+    
+    Args:
+        url: GitHub issue URL.
+    
+    Returns:
+        Tuple of (owner, repo, issue_number).
+    
+    Raises:
+        ValueError: If URL format is invalid.
+    """
+    pattern = r'^https?://github\.com/([^/]+)/([^/]+)/issues/(\d+)/?$'
+    match = re.match(pattern, url)
+    if not match:
+        raise ValueError(f"Invalid GitHub issue URL format: {url}")
+    return match.group(1), match.group(2), int(match.group(3))
+
+
+def fetch_github_issue(owner: str, repo: str, issue_number: int) -> str:
+    """Fetch GitHub issue content using GitHub API.
+    
+    Args:
+        owner: Repository owner.
+        repo: Repository name.
+        issue_number: Issue number.
+    
+    Returns:
+        Task description string combining issue title and body.
+    
+    Raises:
+        SystemExit: If issue cannot be fetched.
+    """
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}"
+    
+    try:
+        request = Request(api_url)
+        request.add_header("Accept", "application/vnd.github.v3+json")
+        request.add_header("User-Agent", "OverDraft-CrewAI")
+        
+        # Add GitHub token if available (for private repos or higher rate limits)
+        github_token = os.getenv("GITHUB_TOKEN")
+        if github_token:
+            request.add_header("Authorization", f"token {github_token}")
+        
+        with urlopen(request, timeout=10) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            
+            title = data.get("title", "")
+            body = data.get("body", "")
+            
+            # Combine title and body
+            if body:
+                task_description = f"{title}\n\n{body}"
+            else:
+                task_description = title
+            
+            return task_description.strip()
+            
+    except HTTPError as e:
+        if e.code == 404:
+            print(
+                f"Error: GitHub issue not found. "
+                f"Check that the repository is public or provide GITHUB_TOKEN for private repos.",
+                file=sys.stderr,
+            )
+        else:
+            print(f"Error: Failed to fetch GitHub issue: HTTP {e.code}", file=sys.stderr)
+        sys.exit(1)
+    except URLError as e:
+        print(f"Error: Network error while fetching GitHub issue: {e}", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON response from GitHub API: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: Unexpected error while fetching GitHub issue: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def get_task_description(args: argparse.Namespace) -> str:
-    """Get task description from args or file.
+    """Get task description from args, file, or GitHub issue.
     
     Args:
         args: Parsed command line arguments.
@@ -62,7 +160,7 @@ def get_task_description(args: argparse.Namespace) -> str:
         Task description string.
     
     Raises:
-        SystemExit: If no task is provided.
+        SystemExit: If no task is provided or cannot be fetched.
     """
     if args.file:
         file_path = Path(args.file)
@@ -72,11 +170,22 @@ def get_task_description(args: argparse.Namespace) -> str:
         return file_path.read_text(encoding="utf-8").strip()
     
     if args.task:
+        # Check if it's a GitHub issue URL
+        if is_github_issue_url(args.task):
+            owner, repo, issue_number = parse_github_issue_url(args.task)
+            print(f"Fetching GitHub issue: {owner}/{repo}#{issue_number}...")
+            return fetch_github_issue(owner, repo, issue_number)
         return args.task
     
     # Try reading from stdin if available
     if not sys.stdin.isatty():
-        return sys.stdin.read().strip()
+        stdin_input = sys.stdin.read().strip()
+        # Check if stdin input is a GitHub issue URL
+        if is_github_issue_url(stdin_input):
+            owner, repo, issue_number = parse_github_issue_url(stdin_input)
+            print(f"Fetching GitHub issue: {owner}/{repo}#{issue_number}...")
+            return fetch_github_issue(owner, repo, issue_number)
+        return stdin_input
     
     print("Error: No task provided. Use positional argument, --file, or pipe input.", file=sys.stderr)
     parser = argparse.ArgumentParser()
@@ -96,6 +205,7 @@ def main() -> None:
     if not api_key:
         print("Error: OPENAI_API_KEY environment variable not set.", file=sys.stderr)
         print("Create a .env file with OPENAI_API_KEY=your-key or export it.", file=sys.stderr)
+        print("Note: For private GitHub repos, also set GITHUB_TOKEN in .env", file=sys.stderr)
         sys.exit(1)
     
     # Get model
