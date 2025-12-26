@@ -37,8 +37,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-o", "--output",
         type=str,
-        default="./output",
-        help="Output directory for generated files (default: ./output)",
+        default=None,
+        help="Output directory for generated files (default: from OUTPUT_DIR env var or ./output)",
     )
     
     parser.add_argument(
@@ -212,7 +212,8 @@ def main() -> None:
     model = args.model or os.getenv("OPENAI_MODEL", "gpt-4o")
     
     # Get output directory
-    output_dir = args.output or os.getenv("OUTPUT_DIR", "./output")
+    # Priority: command line argument > environment variable > default
+    output_dir = args.output if args.output is not None else os.getenv("OUTPUT_DIR", "./output")
     
     # Ensure output directory exists
     Path(output_dir).mkdir(parents=True, exist_ok=True)
