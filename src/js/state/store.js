@@ -2,7 +2,7 @@
  * In-memory state management
  */
 
-import { loadConfiguredSheets, loadSettings, saveConfiguredSheets, saveSettings } from '../storage/persistence.js';
+import { loadConfiguredSheets, loadSettings, loadTeamsSheet, saveConfiguredSheets, saveSettings, saveTeamsSheet } from '../storage/persistence.js';
 import { getSheetKey } from '../utils/parser.js';
 
 /**
@@ -14,10 +14,13 @@ import { getSheetKey } from '../utils/parser.js';
  * @typedef {Object} AppState
  * @property {Map<string, SheetData>} sheets - Cached sheet data
  * @property {SheetConfig[]} configuredSheets - User-configured sheets
+ * @property {SheetConfig|null} teamsSheet - Teams sheet configuration
+ * @property {SheetData|null} teamsData - Cached teams sheet data
  * @property {boolean} isLoading
  * @property {Map<string, Error>} errors
  * @property {number} pollingInterval
  * @property {'light'|'dark'} theme
+ * @property {'players'|'teams'} activeTab - Currently active tab
  */
 
 /**
@@ -31,10 +34,13 @@ import { getSheetKey } from '../utils/parser.js';
 let state = {
   sheets: new Map(),
   configuredSheets: [],
+  teamsSheet: null,
+  teamsData: null,
   isLoading: false,
   errors: new Map(),
   pollingInterval: 1000,
-  theme: 'dark'
+  theme: 'dark',
+  activeTab: 'players'
 };
 
 /** @type {Set<StateListener>} */
@@ -77,11 +83,13 @@ export function subscribe(listener) {
  */
 export function initializeState() {
   const sheets = loadConfiguredSheets();
+  const teamsSheet = loadTeamsSheet();
   const settings = loadSettings();
   
   state = {
     ...state,
     configuredSheets: sheets,
+    teamsSheet,
     pollingInterval: settings.pollingInterval,
     theme: settings.theme
   };
@@ -237,6 +245,69 @@ export function getFirstSheet() {
  */
 export function getSheetData(spreadsheetId, gid) {
   return state.sheets.get(getSheetKey(spreadsheetId, gid));
+}
+
+/**
+ * Sets teams sheet configuration
+ * @param {SheetConfig} config 
+ */
+export function setTeamsSheet(config) {
+  state.teamsSheet = {
+    ...config,
+    addedAt: new Date().toISOString()
+  };
+  saveTeamsSheet(state.teamsSheet);
+  notify('teamsSheet');
+}
+
+/**
+ * Gets teams sheet configuration
+ * @returns {SheetConfig|null}
+ */
+export function getTeamsSheet() {
+  return state.teamsSheet;
+}
+
+/**
+ * Updates cached teams data
+ * @param {SheetData} data 
+ */
+export function updateTeamsData(data) {
+  state.teamsData = data;
+  notify('teamsData');
+}
+
+/**
+ * Gets cached teams data
+ * @returns {SheetData|null}
+ */
+export function getTeamsData() {
+  return state.teamsData;
+}
+
+/**
+ * Checks if teams sheet is configured
+ * @returns {boolean}
+ */
+export function hasTeamsSheet() {
+  return state.teamsSheet !== null;
+}
+
+/**
+ * Sets active tab
+ * @param {'players'|'teams'} tab 
+ */
+export function setActiveTab(tab) {
+  state.activeTab = tab;
+  notify('activeTab');
+}
+
+/**
+ * Gets active tab
+ * @returns {'players'|'teams'}
+ */
+export function getActiveTab() {
+  return state.activeTab;
 }
 
 

@@ -13,9 +13,9 @@ import { createPollingManager } from './utils/polling.js';
 let pollingManager = null;
 
 /**
- * Fetches and renders sheet data
+ * Fetches and renders players sheet data
  */
-async function fetchAndRender() {
+async function fetchAndRenderPlayers() {
   const sheet = store.getFirstSheet();
   if (!sheet) return;
   
@@ -23,21 +23,21 @@ async function fetchAndRender() {
     const data = await fetchSheet(sheet.spreadsheetId, sheet.gid);
     store.updateSheetData(data);
     
-    // Render table
-    renderer.renderTable(data.headers, data.data);
-    renderer.showDataDisplay();
+    // Render table if on players tab
+    if (store.getActiveTab() === 'players') {
+      renderer.renderTable(data.headers, data.data);
+      renderer.showDataDisplay();
+    }
     renderer.updateStatusBar(data.lastUpdated, true);
     renderer.showStatusError(null);
     
   } catch (err) {
-    console.error('[App] Fetch error:', err);
+    console.error('[App] Players fetch error:', err);
     
-    // Network errors are almost always caused by unpublished sheets (CORS blocked)
     const isLikelyNotPublished = 
       (err instanceof SheetError && (err.type === 'NOT_PUBLISHED' || err.type === 'NETWORK')) ||
       err.name === 'TypeError';
     
-    // If we have cached data, keep showing it
     const cached = store.getSheetData(sheet.spreadsheetId, sheet.gid);
     if (cached) {
       renderer.showStatusError(err instanceof SheetError ? getErrorMessage(err) : 'Ошибка загрузки');
@@ -50,6 +50,46 @@ async function fetchAndRender() {
     
     store.setError(sheet.spreadsheetId, sheet.gid, err);
   }
+}
+
+/**
+ * Fetches and renders teams sheet data
+ */
+async function fetchAndRenderTeams() {
+  const teamsSheet = store.getTeamsSheet();
+  if (!teamsSheet) {
+    if (store.getActiveTab() === 'teams') {
+      renderer.showTeamsNotConfigured();
+    }
+    return;
+  }
+  
+  try {
+    const data = await fetchSheet(teamsSheet.spreadsheetId, teamsSheet.gid);
+    store.updateTeamsData(data);
+    
+    // Render teams if on teams tab
+    if (store.getActiveTab() === 'teams') {
+      renderer.renderTeamsView(data.headers, data.data);
+    }
+    
+  } catch (err) {
+    console.error('[App] Teams fetch error:', err);
+    
+    if (store.getActiveTab() === 'teams') {
+      renderer.showTeamsNotConfigured();
+    }
+  }
+}
+
+/**
+ * Fetches and renders all data
+ */
+async function fetchAndRender() {
+  await Promise.all([
+    fetchAndRenderPlayers(),
+    store.hasTeamsSheet() ? fetchAndRenderTeams() : Promise.resolve()
+  ]);
 }
 
 /**
@@ -89,8 +129,37 @@ function startPolling() {
  */
 async function onSheetConfigured() {
   renderer.showLoading();
+  renderer.updateTabsVisibility(store.hasTeamsSheet());
   await fetchAndRender();
   startPolling();
+}
+
+/**
+ * Called when tab changes
+ * @param {'players'|'teams'} tab 
+ */
+async function onTabChange(tab) {
+  renderer.showTab(tab);
+  
+  if (tab === 'players') {
+    const sheet = store.getFirstSheet();
+    if (sheet) {
+      const cached = store.getSheetData(sheet.spreadsheetId, sheet.gid);
+      if (cached) {
+        renderer.renderTable(cached.headers, cached.data);
+        renderer.showDataDisplay();
+      }
+    }
+  } else if (tab === 'teams') {
+    const teamsData = store.getTeamsData();
+    if (teamsData) {
+      renderer.renderTeamsView(teamsData.headers, teamsData.data);
+    } else if (store.hasTeamsSheet()) {
+      await fetchAndRenderTeams();
+    } else {
+      renderer.showTeamsNotConfigured();
+    }
+  }
 }
 
 /**
@@ -121,8 +190,12 @@ async function init() {
   // Initialize event handlers
   events.initializeEvents({
     onSheetConfigured,
-    onPollingIntervalChange
+    onPollingIntervalChange,
+    onTabChange
   });
+  
+  // Show tabs if teams sheet is configured
+  renderer.updateTabsVisibility(store.hasTeamsSheet());
   
   // Check if sheets are configured
   if (store.hasConfiguredSheets()) {

@@ -15,29 +15,35 @@
     <div id="setup-modal" class="modal" hidden>
       <div class="modal-backdrop"></div>
       <div class="modal-content">
-        <div class="modal-header">
+        <div id="setup-modal-header" class="modal-header">
           <h2>Подключить Google Таблицу</h2>
           <p class="modal-subtitle">Вставьте URL опубликованной таблицы</p>
         </div>
         <div class="modal-body">
-          <div class="input-group">
-            <label for="sheet-url">URL таблицы</label>
-            <input 
-              type="url" 
-              id="sheet-url" 
-              placeholder="https://docs.google.com/spreadsheets/d/..."
-              autocomplete="off"
-            >
-            <div id="url-feedback" class="feedback"></div>
+          <div class="sheet-config-section">
+            <div class="input-group">
+              <label for="sheet-url" class="section-title">URL таблицы игроков</label>
+              <input 
+                type="url" 
+                id="sheet-url" 
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                autocomplete="off"
+              >
+              <div id="url-feedback" class="feedback"></div>
+            </div>
           </div>
-          <div class="input-group">
-            <label for="sheet-alias">Название (опционально)</label>
-            <input 
-              type="text" 
-              id="sheet-alias" 
-              placeholder="напр., Player Pool"
-              autocomplete="off"
-            >
+          
+          <div class="sheet-config-section">
+            <div class="input-group">
+              <label for="teams-url" class="section-title">URL таблицы команд</label>
+              <input 
+                type="url" 
+                id="teams-url" 
+                placeholder="https://docs.google.com/spreadsheets/d/...#gid=..."
+                autocomplete="off"
+              >
+              <div id="teams-url-feedback" class="feedback"></div>
+            </div>
           </div>
         </div>
         <!-- Error instructions (shown when sheet is not published) -->
@@ -94,9 +100,15 @@
         </div>
         <div class="modal-body">
           <div class="settings-section">
-            <h3>Configured Sheet</h3>
+            <h3>Таблица игроков</h3>
             <div id="current-sheet-info" class="sheet-info"></div>
-            <button id="change-sheet" class="btn btn-secondary">Change Sheet</button>
+          </div>
+          <div class="settings-section" id="teams-sheet-section">
+            <h3>Таблица команд</h3>
+            <div id="current-teams-info" class="sheet-info">Не настроено</div>
+          </div>
+          <div class="settings-section">
+            <button id="change-sheet" class="btn btn-secondary">Изменить настройки</button>
           </div>
           <div class="settings-section">
             <h3>Polling Interval</h3>
@@ -134,6 +146,12 @@
     </header>
 
     <main class="app-main">
+      <!-- Tabs Navigation -->
+      <nav id="main-tabs" class="tabs-nav" hidden>
+        <button class="tab-btn active" data-tab="players">Игроки</button>
+        <button class="tab-btn" data-tab="teams">Команды</button>
+      </nav>
+
       <div id="loading-state" class="state-container" hidden>
         <div class="loader"></div>
         <p>Loading data...</p>
@@ -161,13 +179,30 @@
         <button id="retry-btn" class="btn btn-primary">Повторить</button>
       </div>
 
-      <div id="data-display" hidden>
+      <!-- Players Tab -->
+      <div id="data-display" class="tab-content" hidden>
         <div class="table-container">
           <table id="data-table">
             <thead id="table-header"></thead>
             <tbody id="table-body"></tbody>
           </table>
         </div>
+      </div>
+
+      <!-- Teams Tab -->
+      <div id="teams-display" class="tab-content" hidden>
+        <div id="teams-validation-error" class="validation-error-box" hidden>
+          <div class="error-header">
+            <span class="error-icon-small">⚠️</span>
+            <strong>Ошибка формата данных</strong>
+          </div>
+          <pre id="teams-error-message"></pre>
+          <details class="schema-help">
+            <summary>Ожидаемый формат таблицы</summary>
+            <pre id="schema-docs"></pre>
+          </details>
+        </div>
+        <div id="teams-container" class="teams-grid"></div>
       </div>
     </main>
 

@@ -3,6 +3,7 @@
  */
 
 import { createElement, escapeHtml, getRoleClass, getRatingClass, formatRelativeTime } from './components.js';
+import { validateTeamsData, formatValidationErrors, getSchemaDocumentation } from '../validation/schema.js';
 
 /** @type {Map<string, string>} Cache of previous row data for change detection */
 const previousRowData = new Map();
@@ -213,6 +214,17 @@ export function showStatusError(message) {
 }
 
 /**
+ * Formats sheet info HTML
+ * @param {Object} sheet
+ * @param {string} sheet.spreadsheetId
+ * @param {string} sheet.gid
+ * @returns {string}
+ */
+function formatSheetInfoHtml(sheet) {
+  return `<div class="sheet-info-row">ID: ${escapeHtml(sheet.spreadsheetId)}</div><div class="sheet-info-row">gid: ${escapeHtml(sheet.gid)}</div>`;
+}
+
+/**
  * Updates the current sheet info in settings
  * @param {Object} sheet 
  * @param {string} sheet.spreadsheetId
@@ -223,10 +235,23 @@ export function updateSheetInfo(sheet) {
   const infoEl = document.getElementById('current-sheet-info');
   if (!infoEl) return;
   
-  if (sheet.alias) {
-    infoEl.innerHTML = `<strong>${escapeHtml(sheet.alias)}</strong><br><small>ID: ${escapeHtml(sheet.spreadsheetId)}</small>`;
+  infoEl.innerHTML = formatSheetInfoHtml(sheet);
+}
+
+/**
+ * Updates the current teams sheet info in settings
+ * @param {Object|null} sheet 
+ * @param {string} [sheet.spreadsheetId]
+ * @param {string} [sheet.gid]
+ */
+export function updateTeamsSheetInfo(sheet) {
+  const infoEl = document.getElementById('current-teams-info');
+  if (!infoEl) return;
+  
+  if (sheet) {
+    infoEl.innerHTML = formatSheetInfoHtml(sheet);
   } else {
-    infoEl.textContent = `ID: ${sheet.spreadsheetId}`;
+    infoEl.textContent = 'Не настроено';
   }
 }
 
@@ -253,5 +278,179 @@ export function updatePollingDisplay(ms) {
   
   if (slider) slider.value = String(ms);
   if (display) display.textContent = `${ms / 1000}s`;
+}
+
+/**
+ * Updates tabs visibility
+ * @param {boolean} showTabs 
+ */
+export function updateTabsVisibility(showTabs) {
+  const tabs = document.getElementById('main-tabs');
+  if (tabs) {
+    tabs.hidden = !showTabs;
+  }
+}
+
+/**
+ * Shows a specific tab content
+ * @param {'players'|'teams'} tab 
+ */
+export function showTab(tab) {
+  const playersDisplay = document.getElementById('data-display');
+  const teamsDisplay = document.getElementById('teams-display');
+  
+  if (playersDisplay) {
+    playersDisplay.hidden = tab !== 'players';
+  }
+  if (teamsDisplay) {
+    teamsDisplay.hidden = tab !== 'teams';
+  }
+  
+  // Update tab button states
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+}
+
+/**
+ * Renders teams data with validation
+ * @param {string[]} headers 
+ * @param {string[][]} data 
+ */
+export function renderTeamsView(headers, data) {
+  const container = document.getElementById('teams-container');
+  const errorBox = document.getElementById('teams-validation-error');
+  const errorMessage = document.getElementById('teams-error-message');
+  const schemaDocs = document.getElementById('schema-docs');
+  
+  if (!container) return;
+  
+  // Validate data against schema
+  const validationResult = validateTeamsData(headers, data);
+  
+  if (!validationResult.valid) {
+    // Show validation error
+    if (errorBox) errorBox.hidden = false;
+    if (errorMessage) {
+      errorMessage.textContent = formatValidationErrors(validationResult.errors);
+    }
+    if (schemaDocs) {
+      schemaDocs.textContent = getSchemaDocumentation();
+    }
+    container.innerHTML = '';
+    return;
+  }
+  
+  // Hide error, show teams
+  if (errorBox) errorBox.hidden = true;
+  
+  const teamsData = validationResult.data;
+  if (!teamsData || !teamsData.teams) {
+    container.innerHTML = '<p class="teams-not-configured">Данные команд не найдены</p>';
+    return;
+  }
+  
+  // Render teams grid
+  container.innerHTML = '';
+  
+  teamsData.teams.forEach(team => {
+    const card = createTeamCard(team);
+    container.appendChild(card);
+  });
+}
+
+/**
+ * Creates a team card element
+ * @param {import('../validation/schema.js').Team} team 
+ * @returns {HTMLElement}
+ */
+function createTeamCard(team) {
+  const card = createElement('div', { className: 'team-card' });
+  
+  // Header
+  const header = createElement('div', { className: 'team-card-header' });
+  const name = createElement('span', { className: 'team-name' }, team.name);
+  header.appendChild(name);
+  
+  if (team.avgRating) {
+    const rating = createElement('span', { className: 'team-rating' }, String(team.avgRating));
+    header.appendChild(rating);
+  }
+  
+  card.appendChild(header);
+  
+  // Players
+  const playersContainer = createElement('div', { className: 'team-players' });
+  
+  team.players.forEach(player => {
+    const playerRow = createElement('div', { className: 'team-player' });
+    
+    // Role badge
+    const roleLabel = getRoleBadgeLabel(player.role);
+    const roleBadge = createElement('span', { 
+      className: `player-role ${player.role}` 
+    }, roleLabel);
+    playerRow.appendChild(roleBadge);
+    
+    // Nickname
+    const nickname = createElement('span', { className: 'player-nickname' }, player.nickname);
+    playerRow.appendChild(nickname);
+    
+    // Rating
+    const ratingClass = getRatingClass(String(player.rating));
+    const rating = createElement('span', { 
+      className: `player-rating ${ratingClass}` 
+    }, String(player.rating));
+    playerRow.appendChild(rating);
+    
+    playersContainer.appendChild(playerRow);
+  });
+  
+  card.appendChild(playersContainer);
+  
+  return card;
+}
+
+/**
+ * Gets short role label for badge
+ * @param {string} role 
+ * @returns {string}
+ */
+function getRoleBadgeLabel(role) {
+  switch (role) {
+    case 'tank': return 'T';
+    case 'dps': return 'D';
+    case 'support': return 'S';
+    default: return '?';
+  }
+}
+
+/**
+ * Shows teams not configured message
+ */
+export function showTeamsNotConfigured() {
+  const container = document.getElementById('teams-container');
+  const errorBox = document.getElementById('teams-validation-error');
+  
+  if (errorBox) errorBox.hidden = true;
+  
+  if (container) {
+    container.innerHTML = `
+      <div class="teams-not-configured">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+        <p>Таблица команд не настроена</p>
+        <button id="configure-teams-btn" class="btn btn-secondary">Настроить</button>
+      </div>
+    `;
+    
+    // Add click handler for configure button
+    const configureBtn = document.getElementById('configure-teams-btn');
+    configureBtn?.addEventListener('click', () => {
+      const settingsBtn = document.getElementById('settings-btn');
+      settingsBtn?.click();
+    });
+  }
 }
 

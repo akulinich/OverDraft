@@ -16,10 +16,105 @@ let onPollingIntervalChange = null;
 /**
  * Shows a modal
  * @param {string} modalId 
+ * @param {Object} [options]
+ * @param {boolean} [options.prefill] - Pre-fill setup modal with current config
  */
-export function showModal(modalId) {
+export function showModal(modalId, options = {}) {
   const modal = document.getElementById(modalId);
-  if (modal) modal.hidden = false;
+  if (modal) {
+    // Handle setup modal special cases
+    if (modalId === 'setup-modal') {
+      if (options.prefill) {
+        prefillSetupModal();
+      } else {
+        resetSetupModal();
+      }
+    }
+    modal.hidden = false;
+  }
+}
+
+/**
+ * Builds Google Sheets URL from spreadsheetId and gid
+ * @param {string} spreadsheetId 
+ * @param {string} gid 
+ * @returns {string}
+ */
+function buildSheetUrl(spreadsheetId, gid) {
+  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${gid}`;
+}
+
+/**
+ * Pre-fills setup modal with current configuration
+ */
+function prefillSetupModal() {
+  const urlInput = /** @type {HTMLInputElement} */ (document.getElementById('sheet-url'));
+  const teamsUrlInput = /** @type {HTMLInputElement} */ (document.getElementById('teams-url'));
+  const feedback = document.getElementById('url-feedback');
+  const teamsFeedback = document.getElementById('teams-url-feedback');
+  const confirmBtn = /** @type {HTMLButtonElement} */ (document.getElementById('confirm-sheet'));
+  const header = document.getElementById('setup-modal-header');
+  
+  // Hide header when editing existing config
+  if (header) {
+    header.hidden = true;
+  }
+  
+  // Pre-fill players sheet
+  const sheet = store.getFirstSheet();
+  if (sheet && urlInput) {
+    urlInput.value = buildSheetUrl(sheet.spreadsheetId, sheet.gid);
+    if (feedback) {
+      feedback.textContent = `✓ URL корректный (gid: ${sheet.gid})`;
+      feedback.className = 'feedback success';
+    }
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+    }
+  }
+  
+  // Pre-fill teams sheet
+  const teamsSheet = store.getTeamsSheet();
+  if (teamsSheet && teamsUrlInput) {
+    teamsUrlInput.value = buildSheetUrl(teamsSheet.spreadsheetId, teamsSheet.gid);
+    if (teamsFeedback) {
+      teamsFeedback.textContent = `✓ URL корректный (gid: ${teamsSheet.gid})`;
+      teamsFeedback.className = 'feedback success';
+    }
+  }
+}
+
+/**
+ * Resets setup modal to initial state (for first-time setup)
+ */
+function resetSetupModal() {
+  const urlInput = /** @type {HTMLInputElement} */ (document.getElementById('sheet-url'));
+  const teamsUrlInput = /** @type {HTMLInputElement} */ (document.getElementById('teams-url'));
+  const feedback = document.getElementById('url-feedback');
+  const teamsFeedback = document.getElementById('teams-url-feedback');
+  const confirmBtn = /** @type {HTMLButtonElement} */ (document.getElementById('confirm-sheet'));
+  const header = document.getElementById('setup-modal-header');
+  
+  // Show header for first-time setup
+  if (header) {
+    header.hidden = false;
+  }
+  
+  // Clear all inputs
+  if (urlInput) urlInput.value = '';
+  if (teamsUrlInput) teamsUrlInput.value = '';
+  
+  if (feedback) {
+    feedback.textContent = '';
+    feedback.className = 'feedback';
+  }
+  if (teamsFeedback) {
+    teamsFeedback.textContent = '';
+    teamsFeedback.className = 'feedback';
+  }
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+  }
 }
 
 /**
@@ -50,41 +145,78 @@ function getUrlValidationError(error) {
 }
 
 /**
+ * Validates a URL input field
+ * @param {HTMLInputElement} urlInput 
+ * @param {HTMLElement} feedback 
+ * @returns {boolean} Whether the URL is valid
+ */
+function validateUrlInput(urlInput, feedback) {
+  const url = urlInput.value.trim();
+  
+  if (!url) {
+    feedback.textContent = '';
+    feedback.className = 'feedback';
+    return false;
+  }
+  
+  const result = validateSheetUrl(url);
+  
+  if (result.valid) {
+    const parsed = parseSheetUrl(url);
+    feedback.textContent = `✓ URL корректный (gid: ${parsed?.gid || '0'})`;
+    feedback.className = 'feedback success';
+    return true;
+  } else {
+    feedback.textContent = getUrlValidationError(result.error);
+    feedback.className = 'feedback error';
+    return false;
+  }
+}
+
+/**
+ * Updates confirm button state based on both URL inputs
+ */
+function updateConfirmButtonState() {
+  const urlInput = /** @type {HTMLInputElement} */ (document.getElementById('sheet-url'));
+  const urlFeedback = document.getElementById('url-feedback');
+  const confirmBtn = /** @type {HTMLButtonElement} */ (document.getElementById('confirm-sheet'));
+  
+  if (!urlInput || !confirmBtn) return;
+  
+  // Main sheet URL is required
+  const isMainUrlValid = urlInput.value.trim() && urlFeedback?.classList.contains('success');
+  confirmBtn.disabled = !isMainUrlValid;
+}
+
+/**
  * Sets up URL input validation
  */
 function setupUrlValidation() {
   const urlInput = /** @type {HTMLInputElement} */ (document.getElementById('sheet-url'));
   const feedback = document.getElementById('url-feedback');
-  const confirmBtn = /** @type {HTMLButtonElement} */ (document.getElementById('confirm-sheet'));
+  const teamsUrlInput = /** @type {HTMLInputElement} */ (document.getElementById('teams-url'));
+  const teamsFeedback = document.getElementById('teams-url-feedback');
   
-  if (!urlInput || !feedback || !confirmBtn) return;
+  if (!urlInput || !feedback) return;
   
   urlInput.addEventListener('input', () => {
-    const url = urlInput.value.trim();
-    
-    // Clear instructions when user types
     clearSetupError();
-    
-    if (!url) {
-      feedback.textContent = '';
-      feedback.className = 'feedback';
-      confirmBtn.disabled = true;
-      return;
-    }
-    
-    const result = validateSheetUrl(url);
-    
-    if (result.valid) {
-      const parsed = parseSheetUrl(url);
-      feedback.textContent = `✓ URL корректный (gid: ${parsed?.gid || '0'})`;
-      feedback.className = 'feedback success';
-      confirmBtn.disabled = false;
-    } else {
-      feedback.textContent = getUrlValidationError(result.error);
-      feedback.className = 'feedback error';
-      confirmBtn.disabled = true;
-    }
+    validateUrlInput(urlInput, feedback);
+    updateConfirmButtonState();
   });
+  
+  // Teams URL validation (optional field)
+  if (teamsUrlInput && teamsFeedback) {
+    teamsUrlInput.addEventListener('input', () => {
+      const url = teamsUrlInput.value.trim();
+      if (!url) {
+        teamsFeedback.textContent = '';
+        teamsFeedback.className = 'feedback';
+        return;
+      }
+      validateUrlInput(teamsUrlInput, teamsFeedback);
+    });
+  }
 }
 
 /**
@@ -122,8 +254,9 @@ function clearSetupError() {
 function setupSheetForm() {
   const confirmBtn = document.getElementById('confirm-sheet');
   const urlInput = /** @type {HTMLInputElement} */ (document.getElementById('sheet-url'));
-  const aliasInput = /** @type {HTMLInputElement} */ (document.getElementById('sheet-alias'));
+  const teamsUrlInput = /** @type {HTMLInputElement} */ (document.getElementById('teams-url'));
   const feedback = document.getElementById('url-feedback');
+  const teamsFeedback = document.getElementById('teams-url-feedback');
   const btnText = confirmBtn?.querySelector('.btn-text');
   const btnLoader = confirmBtn?.querySelector('.btn-loader');
   
@@ -131,10 +264,12 @@ function setupSheetForm() {
   
   confirmBtn.addEventListener('click', async () => {
     const url = urlInput.value.trim();
-    const alias = aliasInput?.value.trim() || undefined;
+    const teamsUrl = teamsUrlInput?.value.trim();
     
     const parsed = parseSheetUrl(url);
     if (!parsed) return;
+    
+    const teamsParsed = teamsUrl ? parseSheetUrl(teamsUrl) : null;
     
     // Clear previous errors
     clearSetupError();
@@ -148,23 +283,45 @@ function setupSheetForm() {
     try {
       await fetchSheet(parsed.spreadsheetId, parsed.gid);
       
-      // Success - configure sheet
+      // Validate teams sheet if provided
+      if (teamsParsed) {
+        try {
+          await fetchSheet(teamsParsed.spreadsheetId, teamsParsed.gid);
+          store.setTeamsSheet(teamsParsed);
+        } catch (teamsErr) {
+          console.warn('[Setup] Teams sheet validation failed:', teamsErr);
+          // Don't block main sheet setup, just warn
+          if (teamsFeedback) {
+            teamsFeedback.textContent = 'Не удалось подключить таблицу команд';
+            teamsFeedback.className = 'feedback error';
+          }
+        }
+      }
+      
+      // Success - configure main sheet
       if (store.hasConfiguredSheets()) {
-        store.replaceSheet({ ...parsed, alias });
+        store.replaceSheet(parsed);
       } else {
-        store.addSheet({ ...parsed, alias });
+        store.addSheet(parsed);
       }
       
       // Clear inputs
       urlInput.value = '';
-      if (aliasInput) aliasInput.value = '';
+      if (teamsUrlInput) teamsUrlInput.value = '';
       if (feedback) {
         feedback.textContent = '';
         feedback.className = 'feedback';
       }
+      if (teamsFeedback) {
+        teamsFeedback.textContent = '';
+        teamsFeedback.className = 'feedback';
+      }
       
       // Hide modal
       hideModal('setup-modal');
+      
+      // Show tabs if teams sheet configured
+      renderer.updateTabsVisibility(store.hasTeamsSheet());
       
       // Trigger callback
       if (onSheetConfigured) onSheetConfigured();
@@ -210,6 +367,8 @@ function setupSettingsModal() {
     if (sheet) {
       renderer.updateSheetInfo(sheet);
     }
+    const teamsSheet = store.getTeamsSheet();
+    renderer.updateTeamsSheetInfo(teamsSheet);
     renderer.updatePollingDisplay(store.getState().pollingInterval);
     showModal('settings-modal');
   });
@@ -224,10 +383,10 @@ function setupSettingsModal() {
     }
   });
   
-  // Change sheet
+  // Change sheet - pre-fill with current values
   changeSheetBtn?.addEventListener('click', () => {
     hideModal('settings-modal');
-    showModal('setup-modal');
+    showModal('setup-modal', { prefill: true });
   });
   
   // Polling interval
@@ -276,10 +435,37 @@ function setupModalBackdrops() {
 }
 
 /**
+ * Sets up tab navigation
+ * @param {function} onTabChange - Called when tab changes
+ */
+function setupTabs(onTabChange) {
+  const tabsNav = document.getElementById('main-tabs');
+  if (!tabsNav) return;
+  
+  tabsNav.addEventListener('click', (e) => {
+    const btn = e.target.closest('.tab-btn');
+    if (!btn) return;
+    
+    const tab = btn.dataset.tab;
+    if (!tab) return;
+    
+    // Update active state
+    tabsNav.querySelectorAll('.tab-btn').forEach(b => {
+      b.classList.toggle('active', b === btn);
+    });
+    
+    // Update store and trigger callback
+    store.setActiveTab(tab);
+    if (onTabChange) onTabChange(tab);
+  });
+}
+
+/**
  * Initializes all event handlers
  * @param {Object} callbacks
  * @param {function} callbacks.onSheetConfigured - Called when sheet is configured
  * @param {function} callbacks.onPollingIntervalChange - Called when polling interval changes
+ * @param {function} [callbacks.onTabChange] - Called when tab changes
  */
 export function initializeEvents(callbacks) {
   onSheetConfigured = callbacks.onSheetConfigured || null;
@@ -290,5 +476,6 @@ export function initializeEvents(callbacks) {
   setupSettingsModal();
   setupRetryButton();
   setupModalBackdrops();
+  setupTabs(callbacks.onTabChange);
 }
 

@@ -4,6 +4,7 @@
 
 const STORAGE_KEYS = {
   CONFIGURED_SHEETS: 'overdraft_configured_sheets',
+  TEAMS_SHEET: 'overdraft_teams_sheet',
   SETTINGS: 'overdraft_settings'
 };
 
@@ -129,10 +130,32 @@ export function saveSettings(settings) {
 }
 
 /**
+ * Loads teams sheet config from localStorage
+ * @returns {SheetConfig|null}
+ */
+export function loadTeamsSheet() {
+  const stored = safeLoad(STORAGE_KEYS.TEAMS_SHEET, () => null);
+  return stored;
+}
+
+/**
+ * Saves teams sheet config to localStorage
+ * @param {SheetConfig|null} sheet 
+ */
+export function saveTeamsSheet(sheet) {
+  if (sheet) {
+    safeSave(STORAGE_KEYS.TEAMS_SHEET, sheet);
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.TEAMS_SHEET);
+  }
+}
+
+/**
  * Clears all stored data
  */
 export function clearAll() {
   localStorage.removeItem(STORAGE_KEYS.CONFIGURED_SHEETS);
+  localStorage.removeItem(STORAGE_KEYS.TEAMS_SHEET);
   localStorage.removeItem(STORAGE_KEYS.SETTINGS);
 }
 

@@ -69,6 +69,8 @@ src/
 │   │   ├── components.js   # UI components
 │   │   ├── renderer.js     # DOM rendering
 │   │   └── events.js       # Event handlers
+│   ├── validation/
+│   │   └── schema.js       # Teams data schema validation
 │   └── utils/
 │       ├── parser.js       # Sheet URL parsing
 │       └── polling.js      # Polling manager
@@ -114,10 +116,13 @@ interface SheetData {
 ```javascript
 interface AppState {
   sheets: Map<string, SheetData>;    // Cached sheet data (key: spreadsheetId_gid)
-  configuredSheets: SheetConfig[];   // User-configured sheets
+  configuredSheets: SheetConfig[];   // User-configured sheets (players)
+  teamsSheet: SheetConfig | null;    // Optional teams sheet configuration
+  teamsData: SheetData | null;       // Cached teams sheet data
   isLoading: boolean;
   errors: Map<string, Error>;
   pollingInterval: number;           // ms (default: 1000)
+  activeTab: 'players' | 'teams';    // Currently active tab
 }
 ```
 
@@ -127,6 +132,7 @@ interface AppState {
 // localStorage keys
 const STORAGE_KEYS = {
   CONFIGURED_SHEETS: 'overdraft_configured_sheets',
+  TEAMS_SHEET: 'overdraft_teams_sheet',
   SETTINGS: 'overdraft_settings'
 };
 
@@ -356,26 +362,38 @@ function migrateStorage(stored) {
 ```
 App
 ├── SetupModal (blocking if no sheets configured)
-│   ├── URLInput
-│   ├── ValidationFeedback
+│   ├── PlayersSheetSection
+│   │   ├── URLInput
+│   │   ├── AliasInput
+│   │   └── ValidationFeedback
+│   ├── TeamsSheetSection (optional)
+│   │   ├── URLInput
+│   │   └── ValidationFeedback
 │   └── ConfirmButton
 ├── Header
 │   └── SettingsButton
-├── DataDisplay (main visualizer area)
-│   ├── TabBar (if multiple sheets/pages)
-│   │   └── Tab (×N)
+├── TabsNav (Players / Teams)
+├── DataDisplay (Players tab)
 │   └── TableView
 │       ├── TableHeader
 │       └── TableBody
+├── TeamsDisplay (Teams tab)
+│   ├── ValidationErrorBox (if schema validation fails)
+│   │   ├── ErrorMessage
+│   │   └── SchemaDocumentation
+│   └── TeamsGrid
+│       └── TeamCard (×N)
+│           ├── TeamHeader (name, avg rating)
+│           └── PlayerList
+│               └── PlayerRow (role, nickname, rating)
 ├── StatusBar
 │   ├── LastUpdateTime
 │   ├── PollingIndicator
 │   └── ErrorMessages
 └── SettingsModal
-    ├── SheetConfiguration
-    │   ├── CurrentSheetsList
-    │   ├── URLInput
-    │   └── RemoveButton (disabled if only 1 sheet)
+    ├── PlayersSheetInfo
+    ├── TeamsSheetInfo
+    ├── ChangeButton
     ├── PollingIntervalSlider
     └── ThemeToggle
 ```
@@ -606,7 +624,99 @@ OverDraft/
 
 ---
 
-## Appendix A: How to Publish a Google Sheet
+## Appendix A: Teams Data Schema
+
+The application supports a secondary "Teams" sheet with the following expected format:
+
+### Team Block Structure
+
+Each team occupies 4 columns and 7 rows:
+
+**Columns (per team):**
+| Column | Content |
+|--------|---------|
+| 1 | Role (Танки, ДД, empty, Сапы, empty) |
+| 2 | Player nickname |
+| 3 | Player rating |
+| 4 | Team average rating (first player row only) |
+
+**Rows (per team block):**
+| Row | Column 1 | Column 2 | Column 3 | Column 4 |
+|-----|----------|----------|----------|----------|
+| 1 | empty | Team name | empty | empty |
+| 2 | Team # | empty | empty | empty |
+| 3 | Танки | player1 | rating | avg |
+| 4 | ДД | player2 | rating | empty |
+| 5 | empty | player3 | rating | empty |
+| 6 | Сапы | player4 | rating | empty |
+| 7 | empty | player5 | rating | empty |
+
+### Layout
+
+- **3 teams per row** (horizontal arrangement)
+- **1 empty column** between teams
+- **2 empty rows** between team rows (vertical separation)
+
+### Valid Role Values
+
+| Role Type | Accepted Values (case-insensitive) |
+|-----------|-----------------------------------|
+| Tank | Танки, Tank, Танк |
+| DPS | ДД, DPS, Damage, DD |
+| Support | Сапы, Support, Саппорт, Healer |
+
+### Rating Values
+
+- Format: 4-digit integer
+- Valid range: 0–9999 (typically 1000–5000 for Overwatch 2)
+- Used for color-coded badges based on rank tier
+
+### Validation
+
+On load, the application validates the teams data against this schema. If validation fails:
+1. An error message is displayed with specific issues
+2. Expected schema documentation is shown
+3. The teams tab displays the error instead of data
+
+### Example Valid Data (CSV format)
+
+```csv
+,Alpha Team,,,,Beta Squad,,,,Gamma Force,,
+1,,,,,2,,,,,3,,
+Танки,TankMaster,3100,3600,,Танки,ShieldWall,3100,3380,,Танки,IronGuard,3900,3380
+ДД,BlazeFury,3700,,,ДД,SniperX,3700,,,ДД,StormBlade,3800,
+,NightHawk,3300,,,,PhantomAce,2400,,,,CyberWolf,2100,
+Сапы,HealBot,4400,,,Сапы,MedicOne,4000,,,Сапы,LifeLink,3600,
+,ZenMaster,3500,,,,AuraGuard,3700,,,,HolyLight,3500,
+```
+
+### Column Structure (per team, 4 columns + 1 separator)
+
+| Column | Content |
+|--------|---------|
+| 1 | Role (Танки, ДД, empty, Сапы, empty) |
+| 2 | Player nickname |
+| 3 | Player rating |
+| 4 | Team average rating (only in first player row) |
+| 5 | Empty separator column |
+
+### Row Structure (per team block)
+
+| Row | Content |
+|-----|---------|
+| 1 | Team name in column 2 |
+| 2 | Team number in column 1 |
+| 3-7 | 5 players: Tank, DPS, DPS, Support, Support |
+
+### Layout
+
+- 3 teams per row (horizontal)
+- Teams separated by 1 empty column
+- Team blocks separated by 2 empty rows (vertical)
+
+---
+
+## Appendix B: How to Publish a Google Sheet
 
 For the app to access sheet data without authentication:
 
@@ -622,5 +732,5 @@ For the app to access sheet data without authentication:
 
 ---
 
-_Document version: 1.1_  
-_Last updated: 2025-12-25_
+_Document version: 1.2_  
+_Last updated: 2025-12-26_
