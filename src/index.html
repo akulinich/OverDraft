@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OverDraft — Player Pool</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles/main.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Setup Modal (shown if no sheets configured) -->
+    <div id="setup-modal" class="modal" hidden>
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Подключить Google Таблицу</h2>
+          <p class="modal-subtitle">Вставьте URL опубликованной таблицы</p>
+        </div>
+        <div class="modal-body">
+          <div class="input-group">
+            <label for="sheet-url">URL таблицы</label>
+            <input 
+              type="url" 
+              id="sheet-url" 
+              placeholder="https://docs.google.com/spreadsheets/d/..."
+              autocomplete="off"
+            >
+            <div id="url-feedback" class="feedback"></div>
+          </div>
+          <div class="input-group">
+            <label for="sheet-alias">Название (опционально)</label>
+            <input 
+              type="text" 
+              id="sheet-alias" 
+              placeholder="напр., Player Pool"
+              autocomplete="off"
+            >
+          </div>
+        </div>
+        <!-- Error instructions (shown when sheet is not published) -->
+        <div id="setup-instructions" class="setup-instructions" hidden>
+          <div class="instruction-box warning">
+            <h3>⚠️ Таблица не опубликована</h3>
+            <p>Чтобы приложение могло читать данные, таблицу нужно опубликовать:</p>
+            <ol>
+              <li>Откройте вашу Google Таблицу</li>
+              <li>Перейдите в <strong>Файл → Поделиться → Опубликовать в интернете</strong></li>
+              <li>Выберите нужный лист</li>
+              <li>Нажмите <strong>Опубликовать</strong></li>
+              <li>Вернитесь сюда и нажмите "Подключить" снова</li>
+            </ol>
+            <p class="instruction-note">
+              <strong>Важно:</strong> "Доступ по ссылке" — это НЕ то же самое. 
+              Нужно именно <strong>Опубликовать в интернете</strong> через меню Файл.
+            </p>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button id="confirm-sheet" class="btn btn-primary" disabled>
+            <span class="btn-text">Подключить</span>
+            <span class="btn-loader" hidden></span>
+          </button>
+        </div>
+        <div class="help-section">
+          <details>
+            <summary>Как опубликовать Google Таблицу?</summary>
+            <ol>
+              <li>Откройте вашу Google Таблицу</li>
+              <li>Перейдите в <strong>Файл → Поделиться → Опубликовать в интернете</strong></li>
+              <li>Выберите нужный лист для публикации</li>
+              <li>Нажмите <strong>Опубликовать</strong></li>
+              <li>Скопируйте URL из браузера и вставьте сюда</li>
+            </ol>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal" hidden>
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Settings</h2>
+          <button id="close-settings" class="btn-icon" aria-label="Close">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="settings-section">
+            <h3>Configured Sheet</h3>
+            <div id="current-sheet-info" class="sheet-info"></div>
+            <button id="change-sheet" class="btn btn-secondary">Change Sheet</button>
+          </div>
+          <div class="settings-section">
+            <h3>Polling Interval</h3>
+            <div class="slider-group">
+              <input type="range" id="polling-interval" min="500" max="5000" step="500" value="1000">
+              <span id="polling-value">1s</span>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>Theme</h3>
+            <div class="theme-toggle">
+              <button id="theme-light" class="theme-btn" data-theme="light">Light</button>
+              <button id="theme-dark" class="theme-btn active" data-theme="dark">Dark</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main App -->
+    <header class="app-header">
+      <div class="header-left">
+        <h1 class="logo">
+          <span class="logo-over">Over</span><span class="logo-draft">Draft</span>
+        </h1>
+      </div>
+      <div class="header-right">
+        <button id="settings-btn" class="btn-icon" aria-label="Settings">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <div id="loading-state" class="state-container" hidden>
+        <div class="loader"></div>
+        <p>Loading data...</p>
+      </div>
+
+      <div id="error-state" class="state-container" hidden>
+        <div class="error-icon">!</div>
+        <p id="error-message"></p>
+        <div id="error-instructions" class="error-instructions" hidden>
+          <div class="instruction-box">
+            <h3>Как опубликовать Google Sheet</h3>
+            <ol>
+              <li>Откройте ваш Google Sheet</li>
+              <li>Перейдите в <strong>Файл → Поделиться → Опубликовать в интернете</strong></li>
+              <li>Выберите нужный лист для публикации</li>
+              <li>Нажмите <strong>Опубликовать</strong></li>
+              <li>Вернитесь сюда и нажмите "Повторить"</li>
+            </ol>
+            <p class="instruction-note">
+              <strong>Важно:</strong> "Доступ по ссылке" — это не то же самое, что "Опубликовать в интернете". 
+              Нужно именно опубликовать через меню Файл.
+            </p>
+          </div>
+        </div>
+        <button id="retry-btn" class="btn btn-primary">Повторить</button>
+      </div>
+
+      <div id="data-display" hidden>
+        <div class="table-container">
+          <table id="data-table">
+            <thead id="table-header"></thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <footer class="app-footer">
+      <div class="status-bar">
+        <div class="status-item">
+          <span id="polling-indicator" class="indicator"></span>
+          <span id="last-update">Not updated yet</span>
+        </div>
+        <div id="error-indicator" class="status-item error" hidden>
+          <span class="indicator error"></span>
+          <span id="error-text"></span>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
+
