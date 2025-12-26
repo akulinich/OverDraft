@@ -261,6 +261,7 @@ echo "Task description" | python -m crew.main
 - `OPENAI_MODEL`: Optional (defaults to `gpt-4o`)
 - `OUTPUT_DIR`: Optional (defaults to `./output`)
 - `GITHUB_TOKEN`: Optional - required for private repositories or higher API rate limits
+- `CREW_VERBOSE`: Optional (defaults to `true`) - enable/disable detailed CrewAI agent output. Set to `true` or `false`. Can be overridden with `--quiet` CLI flag
 
 **Input Sources**:
 - Direct task description (string)

@@ -218,6 +218,14 @@ def main() -> None:
     # Ensure output directory exists
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     
+    # Get verbose setting
+    # Priority: CLI --quiet flag > environment variable > default
+    if args.quiet:
+        verbose = False
+    else:
+        crew_verbose_env = os.getenv("CREW_VERBOSE", "true").lower()
+        verbose = crew_verbose_env in ("true", "1", "yes", "on")
+    
     # Get task description
     task_description = get_task_description(args)
     
@@ -226,6 +234,7 @@ def main() -> None:
     print("=" * 60)
     print(f"Model: {model}")
     print(f"Output: {output_dir}")
+    print(f"Verbose: {verbose}")
     print(f"Task: {task_description[:100]}{'...' if len(task_description) > 100 else ''}")
     print("=" * 60)
     print()
@@ -235,7 +244,7 @@ def main() -> None:
         model=model,
         api_key=api_key,
         output_dir=output_dir,
-        verbose=not args.quiet,
+        verbose=verbose,
     )
     
     try:
