@@ -14,19 +14,13 @@ let onSheetConfigured = null;
 let onPollingIntervalChange = null;
 
 /** @type {function|null} */
-let onTeamSelect = null;
-
-/** @type {function|null} */
-let onPlayerSelect = null;
-
-/** @type {function|null} */
-let onDraftBack = null;
-
-/** @type {function|null} */
 let onFilterChange = null;
 
 /** @type {function|null} */
 let onPlayerRowSelect = null;
+
+/** @type {function|null} */
+let onTeamPlayerSelect = null;
 
 /**
  * Shows a modal
@@ -488,58 +482,19 @@ function setupTabs(onTabChange) {
 }
 
 /**
- * Sets up team card click handlers for draft view
+ * Sets up team player click handlers for teams view
  */
-function setupTeamCardClicks() {
+function setupTeamPlayerClicks() {
   const teamsContainer = document.getElementById('teams-container');
   if (!teamsContainer) return;
   
   teamsContainer.addEventListener('click', (e) => {
-    const card = e.target.closest('.team-card');
-    if (!card) return;
+    const playerRow = e.target.closest('.team-player');
+    if (!playerRow) return;
     
-    // Get team name from card
-    const teamNameEl = card.querySelector('.team-name');
-    if (!teamNameEl) return;
-    
-    const teamName = teamNameEl.textContent;
-    if (onTeamSelect) {
-      onTeamSelect(teamName);
-    }
-  });
-}
-
-/**
- * Sets up draft view event handlers
- */
-function setupDraftViewEvents() {
-  // Back button
-  const backBtn = document.getElementById('draft-back-btn');
-  backBtn?.addEventListener('click', () => {
-    if (onDraftBack) onDraftBack();
-  });
-  
-  // Team slot clicks (using unified player-row class)
-  const teamSlots = document.getElementById('draft-team-slots');
-  teamSlots?.addEventListener('click', (e) => {
-    const row = e.target.closest('.player-row');
-    if (!row || row.classList.contains('empty')) return;
-    
-    const nickname = row.dataset.nickname;
-    if (nickname && onPlayerSelect) {
-      onPlayerSelect(nickname);
-    }
-  });
-  
-  // Pool player clicks (single list container)
-  const playerPool = document.getElementById('draft-player-pool');
-  playerPool?.addEventListener('click', (e) => {
-    const row = e.target.closest('.player-row');
-    if (!row) return;
-    
-    const nickname = row.dataset.nickname;
-    if (nickname && onPlayerSelect) {
-      onPlayerSelect(nickname);
+    const nickname = playerRow.dataset.nickname;
+    if (nickname && onTeamPlayerSelect) {
+      onTeamPlayerSelect(nickname);
     }
   });
 }
@@ -600,20 +555,16 @@ function setupPlayerRowClicks() {
  * @param {function} callbacks.onSheetConfigured - Called when sheet is configured
  * @param {function} callbacks.onPollingIntervalChange - Called when polling interval changes
  * @param {function} [callbacks.onTabChange] - Called when tab changes
- * @param {function} [callbacks.onTeamSelect] - Called when a team card is clicked
- * @param {function} [callbacks.onPlayerSelect] - Called when a player is selected in draft view
- * @param {function} [callbacks.onDraftBack] - Called when back button in draft view is clicked
  * @param {function} [callbacks.onFilterChange] - Called when a filter is toggled
  * @param {function} [callbacks.onPlayerRowSelect] - Called when a player row is clicked in players table
+ * @param {function} [callbacks.onTeamPlayerSelect] - Called when a player is clicked in teams view
  */
 export function initializeEvents(callbacks) {
   onSheetConfigured = callbacks.onSheetConfigured || null;
   onPollingIntervalChange = callbacks.onPollingIntervalChange || null;
-  onTeamSelect = callbacks.onTeamSelect || null;
-  onPlayerSelect = callbacks.onPlayerSelect || null;
-  onDraftBack = callbacks.onDraftBack || null;
   onFilterChange = callbacks.onFilterChange || null;
   onPlayerRowSelect = callbacks.onPlayerRowSelect || null;
+  onTeamPlayerSelect = callbacks.onTeamPlayerSelect || null;
   
   setupUrlValidation();
   setupSheetForm();
@@ -621,8 +572,7 @@ export function initializeEvents(callbacks) {
   setupRetryButton();
   setupModalBackdrops();
   setupTabs(callbacks.onTabChange);
-  setupTeamCardClicks();
-  setupDraftViewEvents();
+  setupTeamPlayerClicks();
   setupFilterButtons();
   setupPlayerRowClicks();
 }

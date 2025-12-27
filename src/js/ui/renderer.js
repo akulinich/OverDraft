@@ -654,12 +654,11 @@ export function updateFilterButtonStates() {
 
 /**
  * Shows a specific tab content
- * @param {'players'|'teams'|'draft'} tab 
+ * @param {'players'|'teams'} tab 
  */
 export function showTab(tab) {
   const playersDisplay = document.getElementById('data-display');
   const teamsDisplay = document.getElementById('teams-display');
-  const draftDisplay = document.getElementById('draft-display');
   
   if (playersDisplay) {
     playersDisplay.hidden = tab !== 'players';
@@ -667,11 +666,8 @@ export function showTab(tab) {
   if (teamsDisplay) {
     teamsDisplay.hidden = tab !== 'teams';
   }
-  if (draftDisplay) {
-    draftDisplay.hidden = tab !== 'draft';
-  }
   
-  // Update tab button states (draft has no tab button, only accessible via team click)
+  // Update tab button states
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
@@ -749,7 +745,10 @@ function createTeamCard(team) {
   const playersContainer = createElement('div', { className: 'team-players' });
   
   team.players.forEach(player => {
-    const playerRow = createElement('div', { className: 'team-player' });
+    const playerRow = createElement('div', { 
+      className: 'team-player',
+      dataset: { nickname: player.nickname }
+    });
     
     // Role icon
     const roleIcon = createRoleIcon(player.role, { size: 'sm' });
@@ -817,295 +816,116 @@ export function showTeamsNotConfigured() {
   }
 }
 
-// ============================================================================
-// Draft View Rendering
-// ============================================================================
-
 /**
- * @typedef {import('../state/store.js').Player} Player
- * @typedef {import('../validation/schema.js').Team} Team
- * @typedef {import('../validation/schema.js').TeamPlayer} TeamPlayer
+ * Renders player details in the teams tab right panel
+ * @param {import('../state/store.js').Player} player
+ * @param {string[]} headers - All headers from the players sheet
  */
-
-/**
- * Renders the complete draft view for a team
- * @param {Team} team - The selected team
- * @param {{tank: Player[], dps: Player[], support: Player[]}} unselectedByRole - Unselected players grouped by role
- */
-export function renderDraftView(team, unselectedByRole) {
-  renderDraftHeader(team);
-  renderDraftTeamPanel(team);
-  renderDraftPlayerPool(unselectedByRole);
-  clearDraftPlayerDescription();
-}
-
-/**
- * Creates a unified player row element (used in both team panel and player pool)
- * @param {Player|TeamPlayer} player - Player data
- * @param {'tank'|'dps'|'support'} role - Player role
- * @param {Object} [options]
- * @param {boolean} [options.showRoleBadge=true] - Show role badge
- * @param {boolean} [options.isTeamSlot=false] - Is this a team slot (vs pool)
- * @returns {HTMLElement}
- */
-function createPlayerRow(player, role, options = {}) {
-  const { showRoleBadge = true, isTeamSlot = false } = options;
-  
-  const row = createElement('div', {
-    className: `player-row ${isTeamSlot ? 'team-slot' : 'pool-item'}`,
-    dataset: { nickname: player.nickname, role }
-  });
-  
-  // Role icon (optional)
-  if (showRoleBadge) {
-    const roleWrapper = createElement('span', { className: `player-row-role ${role}` });
-    const roleIcon = createRoleIcon(role, { size: 'sm' });
-    roleWrapper.appendChild(roleIcon);
-    row.appendChild(roleWrapper);
-  }
-  
-  // Name
-  const nameEl = createElement('span', { className: 'player-row-name' }, player.nickname);
-  row.appendChild(nameEl);
-  
-  // Rating with rank icon
-  const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'sm' });
-  rankBadge.classList.add('player-row-rating');
-  row.appendChild(rankBadge);
-  
-  // Heroes with icons (if available)
-  const heroes = player.heroes || '';
-  if (heroes) {
-    const heroesEl = createHeroIconsContainer(heroes, { size: 'sm', maxIcons: 3 });
-    heroesEl.classList.add('player-row-heroes');
-    row.appendChild(heroesEl);
-  } else {
-    row.appendChild(createElement('span', { className: 'player-row-heroes' }, ''));
-  }
-  
-  return row;
-}
-
-/**
- * Creates an empty team slot placeholder
- * @param {'tank'|'dps'|'support'} role
- * @returns {HTMLElement}
- */
-function createEmptySlot(role) {
-  const row = createElement('div', {
-    className: 'player-row team-slot empty',
-    dataset: { role }
-  });
-  
-  const roleWrapper = createElement('span', { className: `player-row-role ${role}` });
-  const roleIcon = createRoleIcon(role, { size: 'sm' });
-  roleWrapper.appendChild(roleIcon);
-  row.appendChild(roleWrapper);
-  
-  const nameEl = createElement('span', { className: 'player-row-name empty' }, '—');
-  row.appendChild(nameEl);
-  
-  row.appendChild(createElement('span', { className: 'player-row-rating' }, ''));
-  row.appendChild(createElement('span', { className: 'player-row-heroes' }, ''));
-  
-  return row;
-}
-
-/**
- * Renders the draft view header with team name
- * @param {Team} team
- */
-function renderDraftHeader(team) {
-  const nameEl = document.getElementById('draft-team-name');
-  const ratingEl = document.getElementById('draft-team-rating');
-  
-  if (nameEl) {
-    nameEl.textContent = team.name;
-  }
-  if (ratingEl) {
-    ratingEl.textContent = team.avgRating ? `Avg: ${team.avgRating}` : '';
-  }
-}
-
-/**
- * Renders the current team panel with 5 slots
- * @param {Team} team
- */
-function renderDraftTeamPanel(team) {
-  const slotsContainer = document.getElementById('draft-team-slots');
-  if (!slotsContainer) return;
-  
-  // Expected slot structure: 1 tank, 2 dps, 2 support
-  const expectedSlots = [
-    { role: 'tank', index: 0 },
-    { role: 'dps', index: 0 },
-    { role: 'dps', index: 1 },
-    { role: 'support', index: 0 },
-    { role: 'support', index: 1 }
-  ];
-  
-  // Group players by role
-  const playersByRole = {
-    tank: team.players.filter(p => p.role === 'tank'),
-    dps: team.players.filter(p => p.role === 'dps'),
-    support: team.players.filter(p => p.role === 'support')
-  };
-  
-  slotsContainer.innerHTML = '';
-  
-  expectedSlots.forEach(slot => {
-    const player = playersByRole[slot.role][slot.index];
-    const slotEl = player 
-      ? createPlayerRow(player, slot.role, { isTeamSlot: true })
-      : createEmptySlot(slot.role);
-    slotsContainer.appendChild(slotEl);
-  });
-}
-
-/**
- * Renders the player description panel
- * @param {Player} player
- */
-export function renderDraftPlayerDescription(player) {
-  const container = document.getElementById('draft-player-details');
+export function renderTeamsPlayerDetailsPanel(player, headers) {
+  const container = document.getElementById('teams-player-details-content');
   if (!container) return;
   
   container.innerHTML = '';
+  container.classList.add('has-player');
   
-  const card = createElement('div', { className: 'player-details-card' });
+  const card = createElement('div', { className: 'player-info-card' });
   
   // Header with role icon and name
-  const header = createElement('div', { className: 'player-details-header' });
-  const roleWrapper = createElement('span', { className: `player-role-large ${player.role}` });
+  const header = createElement('div', { className: 'player-info-header' });
+  const roleWrapper = createElement('span', { className: `player-role-badge ${player.role}` });
   const roleIcon = createRoleIcon(player.role, { size: 'lg' });
   roleWrapper.appendChild(roleIcon);
   header.appendChild(roleWrapper);
-  header.appendChild(createElement('h4', { className: 'player-details-name' }, player.nickname));
+  header.appendChild(createElement('h4', { className: 'player-info-name' }, player.nickname));
   card.appendChild(header);
   
-  // Stats section
-  const stats = createElement('div', { className: 'player-details-stats' });
+  // Main stats (rating and role)
+  const mainStats = createElement('div', { className: 'player-info-main-stats' });
   
   // Rating stat with rank badge
-  const ratingStat = createElement('div', { className: 'player-stat' });
+  const ratingStat = createElement('div', { className: 'player-info-stat' });
   ratingStat.appendChild(createElement('span', { className: 'stat-label' }, 'Рейтинг'));
   const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'md' });
   rankBadge.classList.add('stat-value');
   ratingStat.appendChild(rankBadge);
-  stats.appendChild(ratingStat);
+  mainStats.appendChild(ratingStat);
   
-  // Role stat with icon
-  const roleStat = createElement('div', { className: 'player-stat' });
+  // Role stat
+  const roleStat = createElement('div', { className: 'player-info-stat' });
   roleStat.appendChild(createElement('span', { className: 'stat-label' }, 'Роль'));
-  const roleStatValue = createElement('span', { className: 'stat-value' });
-  roleStatValue.appendChild(createRoleIcon(player.role, { size: 'sm' }));
-  roleStatValue.appendChild(document.createTextNode(' ' + getRoleLabel(player.role)));
-  roleStat.appendChild(roleStatValue);
-  stats.appendChild(roleStat);
+  const roleValue = createElement('span', { className: 'stat-value stat-role' });
+  roleValue.appendChild(createRoleIcon(player.role, { size: 'sm' }));
+  roleValue.appendChild(document.createTextNode(' ' + getRoleDisplayName(player.role)));
+  roleStat.appendChild(roleValue);
+  mainStats.appendChild(roleStat);
   
-  card.appendChild(stats);
+  card.appendChild(mainStats);
   
   // Heroes section with icons
   if (player.heroes) {
-    const heroesSection = createElement('div', { className: 'player-details-heroes' });
+    const heroesSection = createElement('div', { className: 'player-info-heroes' });
     heroesSection.appendChild(createElement('span', { className: 'stat-label' }, 'Герои'));
-    const heroIcons = createHeroIconsContainer(player.heroes, { size: 'md', maxIcons: 8 });
+    const heroIcons = createHeroIconsContainer(player.heroes, { size: 'md', maxIcons: 10 });
     heroIcons.classList.add('heroes-list');
     heroesSection.appendChild(heroIcons);
     card.appendChild(heroesSection);
   }
   
+  // Additional fields from rawRow (all original columns)
+  if (player.rawRow && player.rawRow.length > 0 && headers.length > 0) {
+    const additionalSection = createElement('div', { className: 'player-info-additional' });
+    additionalSection.appendChild(createElement('span', { className: 'section-label' }, 'Все данные'));
+    
+    const fieldsList = createElement('div', { className: 'player-info-fields' });
+    
+    for (let i = 0; i < headers.length; i++) {
+      const value = player.rawRow[i];
+      if (value === undefined || value === null || value === '') continue;
+      
+      const fieldRow = createElement('div', { className: 'player-info-field' });
+      fieldRow.appendChild(createElement('span', { className: 'field-label' }, headers[i]));
+      fieldRow.appendChild(createElement('span', { className: 'field-value' }, String(value)));
+      fieldsList.appendChild(fieldRow);
+    }
+    
+    additionalSection.appendChild(fieldsList);
+    card.appendChild(additionalSection);
+  }
+  
   container.appendChild(card);
-  container.classList.add('has-player');
 }
 
 /**
- * Clears the player description panel
+ * Clears the teams player details panel
  */
-export function clearDraftPlayerDescription() {
-  const container = document.getElementById('draft-player-details');
+export function clearTeamsPlayerDetailsPanel() {
+  const container = document.getElementById('teams-player-details-content');
   if (!container) return;
   
   container.innerHTML = `
     <div class="player-details-empty">
-      <p>Выберите игрока для просмотра информации</p>
+      <p>Игрок не выбран</p>
     </div>
   `;
   container.classList.remove('has-player');
 }
 
 /**
- * Gets human-readable role label
- * @param {'tank'|'dps'|'support'} role
- * @returns {string}
- */
-function getRoleLabel(role) {
-  switch (role) {
-    case 'tank': return 'Танк';
-    case 'dps': return 'ДД';
-    case 'support': return 'Саппорт';
-    default: return role;
-  }
-}
-
-/**
- * Renders the available players pool (single sorted list)
- * @param {{tank: Player[], dps: Player[], support: Player[]}} playersByRole
- */
-function renderDraftPlayerPool(playersByRole) {
-  const container = document.getElementById('draft-player-pool');
-  if (!container) return;
-  
-  container.innerHTML = '';
-  
-  // Get current role filter
-  const filters = store.getFilters();
-  const roleFilter = filters.role;
-  
-  // Combine players based on role filter
-  let allPlayers;
-  if (roleFilter) {
-    // Only show players of the filtered role
-    allPlayers = [...playersByRole[roleFilter]];
-  } else {
-    // Show all players
-    allPlayers = [
-      ...playersByRole.tank,
-      ...playersByRole.dps,
-      ...playersByRole.support
-    ];
-  }
-  
-  // Sort by rating descending
-  allPlayers.sort((a, b) => b.rating - a.rating);
-  
-  if (allPlayers.length === 0) {
-    container.innerHTML = '<div class="pool-empty">Нет доступных игроков</div>';
-    return;
-  }
-  
-  // Create rows for each player
-  allPlayers.forEach(player => {
-    const row = createPlayerRow(player, player.role, { isTeamSlot: false });
-    container.appendChild(row);
-  });
-}
-
-/**
- * Updates selected player highlight in draft view
+ * Updates selected player highlight in teams view
  * @param {string|null} nickname - Selected player nickname or null to clear
  */
-export function updateDraftPlayerSelection(nickname) {
+export function updateTeamsPlayerSelection(nickname) {
   // Clear previous selection
-  document.querySelectorAll('.player-row.selected').forEach(el => {
+  document.querySelectorAll('.team-player.selected').forEach(el => {
     el.classList.remove('selected');
   });
   
   if (!nickname) return;
   
-  // Highlight all rows with this nickname (team slot and/or pool item)
-  document.querySelectorAll(`.player-row[data-nickname="${CSS.escape(nickname)}"]`).forEach(el => {
+  // Highlight player row with this nickname
+  document.querySelectorAll(`.team-player[data-nickname="${CSS.escape(nickname)}"]`).forEach(el => {
     el.classList.add('selected');
   });
 }
+
 

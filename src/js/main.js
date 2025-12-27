@@ -221,14 +221,13 @@ async function onSheetConfigured() {
 
 /**
  * Called when tab changes
- * @param {'players'|'teams'|'draft'} tab 
+ * @param {'players'|'teams'} tab 
  */
 async function onTabChange(tab) {
   renderer.showTab(tab);
   
-  // Show filters only on players and draft tabs
-  const showFilters = tab === 'players' || tab === 'draft';
-  renderer.updateFiltersVisibility(showFilters);
+  // Show filters only on players tab
+  renderer.updateFiltersVisibility(tab === 'players');
   renderer.updateFilterButtonStates();
   
   if (tab === 'players') {
@@ -242,7 +241,10 @@ async function onTabChange(tab) {
       }
     }
   } else if (tab === 'teams') {
-    store.setSelectedTeam(null);
+    // Clear player selection for teams tab
+    store.setSelectedPlayer(null);
+    renderer.clearTeamsPlayerDetailsPanel();
+    
     const teamsData = store.getTeamsData();
     if (teamsData) {
       renderer.renderTeamsView(teamsData.headers, teamsData.data);
@@ -250,15 +252,6 @@ async function onTabChange(tab) {
       await fetchAndRenderTeams();
     } else {
       renderer.showTeamsNotConfigured();
-    }
-  } else if (tab === 'draft') {
-    const selectedTeam = store.getSelectedTeam();
-    if (selectedTeam) {
-      const teams = getParsedTeams();
-      // Use fresh team data from parsed teams, not the cached selectedTeam
-      const freshTeam = teams.find(t => t.name === selectedTeam.name) || selectedTeam;
-      const unselectedByRole = store.getUnselectedPlayersByRole(teams);
-      renderer.renderDraftView(freshTeam, unselectedByRole);
     }
   }
 }
@@ -276,74 +269,6 @@ function getParsedTeams() {
 }
 
 /**
- * Called when a team card is clicked
- * @param {string} teamName
- */
-function onTeamSelect(teamName) {
-  const teams = getParsedTeams();
-  const team = teams.find(t => t.name === teamName);
-  
-  if (!team) {
-    console.warn('[App] Team not found:', teamName);
-    return;
-  }
-  
-  store.setSelectedTeam(team);
-  store.setActiveTab('draft');
-  
-  // Render immediately with fresh data
-  const unselectedByRole = store.getUnselectedPlayersByRole(teams);
-  renderer.showTab('draft');
-  renderer.updateFiltersVisibility(true);
-  renderer.updateFilterButtonStates();
-  renderer.renderDraftView(team, unselectedByRole);
-}
-
-/**
- * Called when a player is selected in draft view
- * @param {string} nickname
- */
-function onPlayerSelect(nickname) {
-  const player = store.getPlayerByNickname(nickname);
-  
-  if (player) {
-    store.setSelectedPlayer(player);
-    renderer.renderDraftPlayerDescription(player);
-    renderer.updateDraftPlayerSelection(nickname);
-  } else {
-    // Player might be from team (TeamPlayer), create a minimal player object
-    const selectedTeam = store.getSelectedTeam();
-    if (selectedTeam) {
-      const teamPlayer = selectedTeam.players.find(
-        p => p.nickname.toLowerCase() === nickname.toLowerCase()
-      );
-      if (teamPlayer) {
-        // Create a Player-like object from TeamPlayer
-        const playerLike = {
-          nickname: teamPlayer.nickname,
-          role: teamPlayer.role,
-          rating: teamPlayer.rating,
-          heroes: '',
-          rawRow: []
-        };
-        renderer.renderDraftPlayerDescription(playerLike);
-        renderer.updateDraftPlayerSelection(nickname);
-      }
-    }
-  }
-}
-
-/**
- * Called when back button in draft view is clicked
- */
-function onDraftBack() {
-  store.setSelectedTeam(null);
-  store.setSelectedPlayer(null);
-  store.setActiveTab('teams');
-  onTabChange('teams');
-}
-
-/**
  * Called when a filter is toggled
  */
 function onFilterChange() {
@@ -358,12 +283,46 @@ function onFilterChange() {
         renderPlayersPanel(cached.headers, cached.data, teams);
       }
     }
-  } else if (activeTab === 'draft') {
-    const selectedTeam = store.getSelectedTeam();
-    if (selectedTeam) {
-      const freshTeam = teams.find(t => t.name === selectedTeam.name) || selectedTeam;
-      const unselectedByRole = store.getUnselectedPlayersByRole(teams);
-      renderer.renderDraftView(freshTeam, unselectedByRole);
+  }
+}
+
+/**
+ * Called when a player is clicked in a team card
+ * @param {string} nickname
+ */
+function onTeamPlayerSelect(nickname) {
+  const sheet = store.getFirstSheet();
+  const cached = sheet ? store.getSheetData(sheet.spreadsheetId, sheet.gid) : null;
+  const headers = cached?.headers || [];
+  
+  const player = store.getPlayerByNickname(nickname);
+  
+  if (player) {
+    store.setSelectedPlayer(player);
+    renderer.renderTeamsPlayerDetailsPanel(player, headers);
+    renderer.updateTeamsPlayerSelection(nickname);
+  } else {
+    // Player not found in players sheet, show minimal info
+    // Try to find in parsed teams
+    const teams = getParsedTeams();
+    for (const team of teams) {
+      const teamPlayer = team.players.find(
+        p => p.nickname.toLowerCase() === nickname.toLowerCase()
+      );
+      if (teamPlayer) {
+        const playerLike = {
+          nickname: teamPlayer.nickname,
+          battleTag: '',
+          role: teamPlayer.role,
+          rating: teamPlayer.rating,
+          heroes: '',
+          rawRow: []
+        };
+        store.setSelectedPlayer(playerLike);
+        renderer.renderTeamsPlayerDetailsPanel(playerLike, headers);
+        renderer.updateTeamsPlayerSelection(nickname);
+        break;
+      }
     }
   }
 }
@@ -490,18 +449,16 @@ async function init() {
     onSheetConfigured,
     onPollingIntervalChange,
     onTabChange,
-    onTeamSelect,
-    onPlayerSelect,
-    onDraftBack,
     onFilterChange,
-    onPlayerRowSelect
+    onPlayerRowSelect,
+    onTeamPlayerSelect
   });
   
   // Show tabs if teams sheet is configured
   renderer.updateTabsVisibility(store.hasTeamsSheet());
   
   // Show filters on players tab by default
-  renderer.updateFiltersVisibility(store.getActiveTab() === 'players' || store.getActiveTab() === 'draft');
+  renderer.updateFiltersVisibility(store.getActiveTab() === 'players');
   renderer.updateFilterButtonStates();
   
   // Check if sheets are configured

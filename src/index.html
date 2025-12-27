@@ -267,55 +267,18 @@
             <pre id="schema-docs"></pre>
           </details>
         </div>
-        <div id="teams-container" class="teams-grid"></div>
-      </div>
-
-      <!-- Draft View Tab -->
-      <div id="draft-display" class="tab-content" hidden>
-        <!-- Draft Header -->
-        <div class="draft-header">
-          <button id="draft-back-btn" class="btn btn-secondary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 12H5M12 19l-7-7 7-7"/>
-            </svg>
-            Назад
-          </button>
-          <h2 id="draft-team-name" class="draft-team-title"></h2>
-          <span id="draft-team-rating" class="draft-team-avg"></span>
-        </div>
-
-        <!-- Draft Layout: Team | Players | Details -->
-        <div class="draft-layout">
-          <!-- Left: Current Team Panel -->
-          <div class="draft-panel draft-team-panel">
-            <h3 class="draft-panel-title">Команда</h3>
-            <div id="draft-team-slots" class="draft-team-slots">
-              <!-- Slots populated by JS -->
-            </div>
-          </div>
-
-          <!-- Center: Available Players (wide) -->
-          <div class="draft-panel draft-pool-panel">
-            <div class="draft-pool-header">
-              <h3 class="draft-panel-title">Доступные игроки</h3>
-            </div>
-            <div class="player-pool-table-header">
-              <span class="col-role"></span>
-              <span class="col-name">Имя</span>
-              <span class="col-rating">Рейтинг</span>
-              <span class="col-heroes">Герои</span>
-            </div>
-            <div id="draft-player-pool" class="draft-player-pool">
-              <!-- Player rows populated by JS -->
-            </div>
+        <div class="teams-layout">
+          <!-- Left: Teams Grid Panel -->
+          <div class="teams-grid-panel">
+            <div id="teams-container" class="teams-grid"></div>
           </div>
 
           <!-- Right: Player Details Panel -->
-          <div class="draft-panel draft-details-panel">
-            <h3 class="draft-panel-title">Детали игрока</h3>
-            <div id="draft-player-details" class="draft-player-details">
+          <div class="teams-details-panel">
+            <h3 class="panel-title">Информация об игроке</h3>
+            <div id="teams-player-details-content">
               <div class="player-details-empty">
-                <p>Выберите игрока для просмотра информации</p>
+                <p>Игрок не выбран</p>
               </div>
             </div>
           </div>
