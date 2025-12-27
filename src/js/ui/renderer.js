@@ -23,8 +23,40 @@ const MANDATORY_HEADER_PATTERNS = {
   heroes: /^(герои|heroes|hero|персонажи|characters)/i
 };
 
+/**
+ * Display labels for mandatory columns (used in table headers)
+ */
+const MANDATORY_COLUMN_LABELS = {
+  nickname: 'Ник игрока',
+  role: 'Роль',
+  rating: 'Рейтинг',
+  heroes: 'Герои'
+};
+
 /** @type {Map<string, string>} Cache of previous row data for change detection */
 const previousRowData = new Map();
+
+/**
+ * Gets the nickname column index using mapping or pattern fallback
+ * @param {string[]} headers
+ * @returns {number} Column index or -1 if not found
+ */
+function getNicknameColumnIndex(headers) {
+  const sheet = store.getFirstSheet();
+  const sheetKey = sheet ? `${sheet.spreadsheetId}_${sheet.gid}` : null;
+  const mapping = sheetKey ? store.getColumnMapping(sheetKey) : null;
+  
+  // Try mapping first
+  if (mapping && mapping.nickname) {
+    const idx = headers.indexOf(mapping.nickname);
+    if (idx !== -1) return idx;
+  }
+  
+  // Fallback to pattern
+  return headers.findIndex(h => 
+    MANDATORY_HEADER_PATTERNS.nickname.test(h.trim())
+  );
+}
 
 /**
  * Renders table headers
@@ -46,11 +78,28 @@ export function renderTableHeader(headers) {
 }
 
 /**
+ * Gets the current column mapping from store
+ * @returns {import('../state/store.js').ColumnMapping|null}
+ */
+function getCurrentColumnMapping() {
+  const sheet = store.getFirstSheet();
+  if (!sheet) return null;
+  const sheetKey = `${sheet.spreadsheetId}_${sheet.gid}`;
+  return store.getColumnMapping(sheetKey);
+}
+
+/**
  * Determines if a column contains rating data based on header
  * @param {string} header 
  * @returns {boolean}
  */
 function isRatingColumn(header) {
+  // First check mapping
+  const mapping = getCurrentColumnMapping();
+  if (mapping && mapping.rating) {
+    return header === mapping.rating;
+  }
+  // Fallback to pattern
   const lower = header.toLowerCase();
   return lower.includes('рейтинг') || lower.includes('rating') || lower.includes('sr');
 }
@@ -61,6 +110,12 @@ function isRatingColumn(header) {
  * @returns {boolean}
  */
 function isRoleColumn(header) {
+  // First check mapping
+  const mapping = getCurrentColumnMapping();
+  if (mapping && mapping.role) {
+    return header === mapping.role;
+  }
+  // Fallback to pattern
   const lower = header.toLowerCase();
   return lower.includes('роль') || lower.includes('role');
 }
@@ -71,6 +126,12 @@ function isRoleColumn(header) {
  * @returns {boolean}
  */
 function isHeroesColumn(header) {
+  // First check mapping
+  const mapping = getCurrentColumnMapping();
+  if (mapping && mapping.heroes) {
+    return header === mapping.heroes;
+  }
+  // Fallback to pattern
   const lower = header.toLowerCase();
   return lower.includes('герои') || lower.includes('heroes') || lower.includes('hero') || 
          lower.includes('персонажи') || lower.includes('characters');
@@ -92,9 +153,10 @@ function isCommentColumn(header) {
  * @param {string} value 
  * @param {string} header 
  * @param {number} colIndex 
+ * @param {string} [columnKey] - Optional column key (e.g., 'rating', 'role', 'heroes', 'nickname')
  * @returns {HTMLElement}
  */
-function renderCell(value, header, colIndex) {
+function renderCell(value, header, colIndex, columnKey) {
   const td = createElement('td');
   
   // Skip icon rendering for comment columns
@@ -104,7 +166,7 @@ function renderCell(value, header, colIndex) {
   }
   
   // Apply role-specific styling with icon
-  if (isRoleColumn(header)) {
+  if (columnKey === 'role' || isRoleColumn(header)) {
     td.classList.add('cell-role');
     const normalizedRole = normalizeRoleValue(value);
     if (normalizedRole && isOverfastLoaded()) {
@@ -119,7 +181,7 @@ function renderCell(value, header, colIndex) {
   }
   
   // Apply rating-specific styling with rank icon
-  if (isRatingColumn(header)) {
+  if (columnKey === 'rating' || isRatingColumn(header)) {
     td.classList.add('cell-rating');
     const rankBadge = createRankBadge(value, { showNumber: true, size: 'sm' });
     td.appendChild(rankBadge);
@@ -127,7 +189,7 @@ function renderCell(value, header, colIndex) {
   }
   
   // Apply heroes column with icons
-  if (isHeroesColumn(header) && value) {
+  if ((columnKey === 'heroes' || isHeroesColumn(header)) && value) {
     td.classList.add('cell-heroes');
     const heroIcons = createHeroIconsContainer(value, { size: 'md', maxIcons: 5 });
     td.appendChild(heroIcons);
@@ -172,10 +234,8 @@ function applyFiltersToTableData(data, headers, teams) {
   const filteredPlayers = store.getFilteredPlayers(teams);
   const filteredNicknames = new Set(filteredPlayers.map(p => p.nickname.toLowerCase()));
   
-  // Find nickname column index
-  const nicknameIdx = headers.findIndex(h => 
-    /^(ник|никнейм|nickname|nick|имя|name|игрок|player)/i.test(h.trim())
-  );
+  // Find nickname column index using mapping
+  const nicknameIdx = getNicknameColumnIndex(headers);
   
   if (nicknameIdx === -1) {
     return data; // Can't filter without nickname column
@@ -236,18 +296,47 @@ export function renderTableBody(data, headers, teams = []) {
 }
 
 /**
- * Finds column indices for mandatory columns
+ * Finds column indices for mandatory columns using column mapping
  * @param {string[]} headers
- * @returns {{key: string, index: number, header: string}[]}
+ * @returns {{key: string, index: number, header: string, originalHeader: string}[]}
  */
 function findMandatoryColumnIndices(headers) {
   const result = [];
   
+  // Try to get mapping from store first
+  const sheet = store.getFirstSheet();
+  const sheetKey = sheet ? `${sheet.spreadsheetId}_${sheet.gid}` : null;
+  const mapping = sheetKey ? store.getColumnMapping(sheetKey) : null;
+  
   for (const key of MANDATORY_COLUMNS) {
-    const pattern = MANDATORY_HEADER_PATTERNS[key];
-    const index = headers.findIndex(h => pattern.test(h.trim()));
+    let index = -1;
+    let originalHeader = '';
+    
+    // First, try using the saved mapping
+    if (mapping && mapping[key]) {
+      index = headers.indexOf(mapping[key]);
+      if (index !== -1) {
+        originalHeader = mapping[key];
+      }
+    }
+    
+    // Fallback to pattern matching if mapping not found
+    if (index === -1) {
+      const pattern = MANDATORY_HEADER_PATTERNS[key];
+      index = headers.findIndex(h => pattern.test(h.trim()));
+      if (index !== -1) {
+        originalHeader = headers[index];
+      }
+    }
+    
     if (index !== -1) {
-      result.push({ key, index, header: headers[index] });
+      // Use display label for header, preserve original for cell rendering
+      result.push({ 
+        key, 
+        index, 
+        header: MANDATORY_COLUMN_LABELS[key] || originalHeader,
+        originalHeader 
+      });
     }
   }
   
@@ -294,7 +383,8 @@ export function renderPlayersTable(headers, data, teams = []) {
     
     for (const col of mandatoryCols) {
       const value = row[col.index] || '';
-      const td = renderCell(value, col.header, col.index);
+      // Use originalHeader for cell styling detection, key for column type
+      const td = renderCell(value, col.originalHeader, col.index, col.key);
       tr.appendChild(td);
     }
     
@@ -316,10 +406,8 @@ export function getFirstFilteredPlayer(headers, data, teams) {
   const filteredData = applyFiltersToTableData(data, headers, teams);
   if (filteredData.length === 0) return null;
   
-  // Find nickname column index
-  const nicknameIdx = headers.findIndex(h => 
-    MANDATORY_HEADER_PATTERNS.nickname.test(h.trim())
-  );
+  // Find nickname column index using mapping
+  const nicknameIdx = getNicknameColumnIndex(headers);
   
   if (nicknameIdx === -1) return null;
   
@@ -928,4 +1016,234 @@ export function updateTeamsPlayerSelection(nickname) {
   });
 }
 
+// ============================================================================
+// Column Mapping Modal
+// ============================================================================
+
+/**
+ * Renders the column mapping modal content
+ * @param {string[]} sheetHeaders - Headers from the sheet
+ * @param {import('../storage/persistence.js').ColumnMapping} detectedMapping - Auto-detected mapping
+ * @param {string[]} missingColumns - Keys of missing required columns
+ * @param {import('../state/store.js').ColumnValidationError[]} errors - Validation errors
+ */
+export function renderColumnMappingModal(sheetHeaders, detectedMapping, missingColumns, errors) {
+  const container = document.getElementById('column-mapping-table');
+  const errorContainer = document.getElementById('column-mapping-error');
+  const description = document.getElementById('column-mapping-description');
+  
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  // Update description based on what's missing
+  if (description) {
+    if (missingColumns.length > 0) {
+      description.textContent = 'Некоторые обязательные колонки не найдены автоматически. Укажите соответствие колонок в вашей таблице:';
+    } else if (errors.length > 0) {
+      description.textContent = 'Обнаружены ошибки в данных. Проверьте соответствие колонок:';
+    } else {
+      description.textContent = 'Проверьте соответствие колонок:';
+    }
+  }
+  
+  // Build error map for quick lookup
+  const errorMap = new Map();
+  for (const error of errors) {
+    errorMap.set(error.column, error.message);
+  }
+  
+  // Render each required column row
+  for (const columnKey of store.REQUIRED_COLUMNS) {
+    const row = createElement('div', { className: 'column-mapping-row' });
+    
+    // Label
+    const label = createElement('span', { 
+      className: 'column-mapping-label required' 
+    }, store.REQUIRED_COLUMN_LABELS[columnKey]);
+    row.appendChild(label);
+    
+    // Select dropdown
+    const select = createElement('select', { 
+      className: 'column-mapping-select',
+      dataset: { columnKey }
+    });
+    
+    // Empty option
+    const emptyOption = createElement('option', { value: '' }, '-- не выбрано --');
+    select.appendChild(emptyOption);
+    
+    // Options for each header
+    for (const header of sheetHeaders) {
+      const option = createElement('option', { value: header }, header);
+      // Pre-select if detected
+      if (detectedMapping[columnKey] === header) {
+        option.selected = true;
+      }
+      select.appendChild(option);
+    }
+    
+    // Mark as error if validation failed
+    const hasError = errorMap.has(columnKey);
+    const isMissing = missingColumns.includes(columnKey) && !detectedMapping[columnKey];
+    
+    if (hasError) {
+      select.classList.add('error');
+    } else if (!isMissing && detectedMapping[columnKey]) {
+      select.classList.add('success');
+    }
+    
+    row.appendChild(select);
+    
+    // Status indicator
+    const status = createElement('span', { className: 'column-mapping-status' });
+    if (hasError) {
+      status.classList.add('invalid');
+      status.textContent = '✗';
+    } else if (isMissing) {
+      status.classList.add('warning');
+      status.textContent = '⚠';
+    } else if (detectedMapping[columnKey]) {
+      status.classList.add('valid');
+      status.textContent = '✓';
+    }
+    row.appendChild(status);
+    
+    container.appendChild(row);
+    
+    // Add error message if present
+    if (hasError) {
+      const errorRow = createElement('div', { 
+        className: 'column-mapping-row-error',
+        dataset: { columnKey }
+      }, errorMap.get(columnKey));
+      container.appendChild(errorRow);
+    }
+  }
+  
+  // Update confirm button state
+  updateColumnMappingConfirmButton();
+  
+  // Hide general error container by default
+  if (errorContainer) {
+    errorContainer.hidden = true;
+  }
+}
+
+/**
+ * Gets current mapping from the modal form
+ * @returns {import('../storage/persistence.js').ColumnMapping}
+ */
+export function getColumnMappingFromModal() {
+  /** @type {import('../storage/persistence.js').ColumnMapping} */
+  const mapping = {
+    nickname: null,
+    role: null,
+    rating: null,
+    heroes: null
+  };
+  
+  const selects = document.querySelectorAll('.column-mapping-select');
+  for (const select of selects) {
+    const key = select.dataset.columnKey;
+    const value = select.value;
+    if (key && value) {
+      mapping[key] = value;
+    }
+  }
+  
+  return mapping;
+}
+
+/**
+ * Updates the confirm button state based on current selections
+ */
+export function updateColumnMappingConfirmButton() {
+  const confirmBtn = document.getElementById('confirm-column-mapping');
+  if (!confirmBtn) return;
+  
+  const mapping = getColumnMappingFromModal();
+  
+  // Check all required columns are selected
+  let allSelected = true;
+  for (const key of store.REQUIRED_COLUMNS) {
+    if (!mapping[key]) {
+      allSelected = false;
+      break;
+    }
+  }
+  
+  // Check no error indicators are present
+  const hasErrors = document.querySelectorAll('.column-mapping-select.error').length > 0;
+  
+  confirmBtn.disabled = !allSelected || hasErrors;
+}
+
+/**
+ * Updates a single column row status based on validation
+ * @param {string} columnKey
+ * @param {boolean} isValid
+ * @param {string} [errorMessage]
+ */
+export function updateColumnMappingRowStatus(columnKey, isValid, errorMessage) {
+  const select = document.querySelector(`.column-mapping-select[data-column-key="${columnKey}"]`);
+  const status = select?.parentElement?.querySelector('.column-mapping-status');
+  const existingError = document.querySelector(`.column-mapping-row-error[data-column-key="${columnKey}"]`);
+  
+  if (!select || !status) return;
+  
+  // Remove existing error row
+  if (existingError) {
+    existingError.remove();
+  }
+  
+  // Update select and status
+  select.classList.remove('error', 'success');
+  status.classList.remove('valid', 'invalid', 'warning');
+  status.textContent = '';
+  
+  if (!select.value) {
+    status.classList.add('warning');
+    status.textContent = '⚠';
+  } else if (isValid) {
+    select.classList.add('success');
+    status.classList.add('valid');
+    status.textContent = '✓';
+  } else {
+    select.classList.add('error');
+    status.classList.add('invalid');
+    status.textContent = '✗';
+    
+    // Add error message
+    if (errorMessage) {
+      const errorRow = createElement('div', { 
+        className: 'column-mapping-row-error',
+        dataset: { columnKey }
+      }, errorMessage);
+      select.parentElement.insertAdjacentElement('afterend', errorRow);
+    }
+  }
+  
+  updateColumnMappingConfirmButton();
+}
+
+/**
+ * Shows the column mapping modal
+ */
+export function showColumnMappingModal() {
+  const modal = document.getElementById('column-mapping-modal');
+  if (modal) {
+    modal.hidden = false;
+  }
+}
+
+/**
+ * Hides the column mapping modal
+ */
+export function hideColumnMappingModal() {
+  const modal = document.getElementById('column-mapping-modal');
+  if (modal) {
+    modal.hidden = true;
+  }
+}
 

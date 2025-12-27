@@ -5,7 +5,8 @@
 const STORAGE_KEYS = {
   CONFIGURED_SHEETS: 'overdraft_configured_sheets',
   TEAMS_SHEET: 'overdraft_teams_sheet',
-  SETTINGS: 'overdraft_settings'
+  SETTINGS: 'overdraft_settings',
+  COLUMN_MAPPINGS: 'overdraft_column_mappings'
 };
 
 const CURRENT_VERSION = 1;
@@ -29,6 +30,20 @@ const CURRENT_VERSION = 1;
  * @property {number} version
  * @property {number} pollingInterval
  * @property {'light'|'dark'} theme
+ */
+
+/**
+ * @typedef {Object} ColumnMapping
+ * @property {string|null} nickname - Column name for player nickname
+ * @property {string|null} role - Column name for player role
+ * @property {string|null} rating - Column name for player rating
+ * @property {string|null} heroes - Column name for player heroes
+ */
+
+/**
+ * @typedef {Object} StoredColumnMappings
+ * @property {number} version
+ * @property {Object<string, ColumnMapping>} mappings - Keyed by sheetKey (spreadsheetId_gid)
  */
 
 /**
@@ -151,12 +166,56 @@ export function saveTeamsSheet(sheet) {
 }
 
 /**
+ * Gets default column mappings storage
+ * @returns {StoredColumnMappings}
+ */
+function getDefaultColumnMappings() {
+  return {
+    version: CURRENT_VERSION,
+    mappings: {}
+  };
+}
+
+/**
+ * Loads column mapping for a specific sheet
+ * @param {string} sheetKey - Key in format spreadsheetId_gid
+ * @returns {ColumnMapping|null}
+ */
+export function loadColumnMapping(sheetKey) {
+  const stored = safeLoad(STORAGE_KEYS.COLUMN_MAPPINGS, getDefaultColumnMappings);
+  return stored.mappings?.[sheetKey] || null;
+}
+
+/**
+ * Saves column mapping for a specific sheet
+ * @param {string} sheetKey - Key in format spreadsheetId_gid
+ * @param {ColumnMapping} mapping
+ */
+export function saveColumnMapping(sheetKey, mapping) {
+  const stored = safeLoad(STORAGE_KEYS.COLUMN_MAPPINGS, getDefaultColumnMappings);
+  stored.mappings[sheetKey] = mapping;
+  stored.version = CURRENT_VERSION;
+  safeSave(STORAGE_KEYS.COLUMN_MAPPINGS, stored);
+}
+
+/**
+ * Removes column mapping for a specific sheet
+ * @param {string} sheetKey - Key in format spreadsheetId_gid
+ */
+export function removeColumnMapping(sheetKey) {
+  const stored = safeLoad(STORAGE_KEYS.COLUMN_MAPPINGS, getDefaultColumnMappings);
+  delete stored.mappings[sheetKey];
+  safeSave(STORAGE_KEYS.COLUMN_MAPPINGS, stored);
+}
+
+/**
  * Clears all stored data
  */
 export function clearAll() {
   localStorage.removeItem(STORAGE_KEYS.CONFIGURED_SHEETS);
   localStorage.removeItem(STORAGE_KEYS.TEAMS_SHEET);
   localStorage.removeItem(STORAGE_KEYS.SETTINGS);
+  localStorage.removeItem(STORAGE_KEYS.COLUMN_MAPPINGS);
 }
 
 

@@ -2,8 +2,26 @@
  * In-memory state management
  */
 
-import { loadConfiguredSheets, loadSettings, loadTeamsSheet, saveConfiguredSheets, saveSettings, saveTeamsSheet } from '../storage/persistence.js';
+import { loadConfiguredSheets, loadSettings, loadTeamsSheet, saveConfiguredSheets, saveSettings, saveTeamsSheet, loadColumnMapping, saveColumnMapping } from '../storage/persistence.js';
 import { getSheetKey } from '../utils/parser.js';
+
+/**
+ * @typedef {import('../storage/persistence.js').ColumnMapping} ColumnMapping
+ */
+
+/**
+ * @typedef {Object} ColumnValidationError
+ * @property {string} column - Column key (e.g. 'rating')
+ * @property {string} message - Error description
+ */
+
+/**
+ * @typedef {Object} ColumnValidationResult
+ * @property {boolean} valid - True if all required columns are mapped and valid
+ * @property {string[]} missing - Keys of missing columns
+ * @property {ColumnMapping} detected - Auto-detected mapping
+ * @property {ColumnValidationError[]} errors - Data validation errors
+ */
 
 /**
  * @typedef {import('../api/sheets.js').SheetData} SheetData
@@ -45,6 +63,7 @@ import { getSheetKey } from '../utils/parser.js';
  * @property {boolean} overfastLoaded - Whether OverFast API data is loaded
  * @property {boolean} overfastLoading - Whether OverFast API data is currently loading
  * @property {FilterState} filters - Player list filters
+ * @property {Map<string, ColumnMapping>} columnMappings - Column mappings by sheet key
  */
 
 /**
@@ -73,7 +92,8 @@ let state = {
   filters: {
     availableOnly: false,
     role: null
-  }
+  },
+  columnMappings: new Map()
 };
 
 /** Column header patterns for player data parsing */
@@ -83,6 +103,17 @@ const HEADER_PATTERNS = {
   role: /^(роль|role)/i,
   rating: /^(рейтинг|rating|sr|ранг|rank)/i,
   heroes: /^(герои|heroes|hero|персонажи|characters)/i
+};
+
+/** Required columns for player data */
+export const REQUIRED_COLUMNS = ['nickname', 'role', 'rating', 'heroes'];
+
+/** Human-readable labels for required columns */
+export const REQUIRED_COLUMN_LABELS = {
+  nickname: 'Ник игрока',
+  role: 'Роль',
+  rating: 'Рейтинг',
+  heroes: 'Герои'
 };
 
 /** Role normalization patterns */
@@ -279,11 +310,217 @@ function parsePlayersFromSheet(headers, data) {
   return players;
 }
 
+// ============================================================================
+// Column Mapping Functions
+// ============================================================================
+
+/**
+ * Auto-detects column mapping from headers using patterns
+ * @param {string[]} headers
+ * @returns {ColumnMapping}
+ */
+export function detectColumnMapping(headers) {
+  /** @type {ColumnMapping} */
+  const mapping = {
+    nickname: null,
+    role: null,
+    rating: null,
+    heroes: null
+  };
+  
+  for (const key of REQUIRED_COLUMNS) {
+    const pattern = HEADER_PATTERNS[key];
+    if (pattern) {
+      const index = headers.findIndex(h => pattern.test(h.trim()));
+      if (index !== -1) {
+        mapping[key] = headers[index];
+      }
+    }
+  }
+  
+  return mapping;
+}
+
+/**
+ * Validates that a column contains mostly numeric data
+ * @param {string[][]} data - Sheet data rows
+ * @param {number} columnIndex - Index of the column to validate
+ * @returns {boolean} True if at least 50% of non-empty values are numbers
+ */
+export function validateRatingColumn(data, columnIndex) {
+  if (columnIndex < 0) return false;
+  
+  let numericCount = 0;
+  let nonEmptyCount = 0;
+  
+  for (const row of data) {
+    const value = row[columnIndex]?.trim();
+    if (!value) continue;
+    
+    nonEmptyCount++;
+    const num = parseFloat(value);
+    if (!isNaN(num)) {
+      numericCount++;
+    }
+  }
+  
+  // If no data, consider it valid (will fail on missing column check)
+  if (nonEmptyCount === 0) return true;
+  
+  // At least 50% of non-empty values should be numeric
+  return (numericCount / nonEmptyCount) >= 0.5;
+}
+
+/**
+ * Validates required columns are present and data is valid
+ * @param {string[]} headers - Column headers from sheet
+ * @param {string[][]} data - Sheet data rows
+ * @param {ColumnMapping} [existingMapping] - Existing mapping to validate
+ * @returns {ColumnValidationResult}
+ */
+export function validateRequiredColumns(headers, data, existingMapping) {
+  const detected = detectColumnMapping(headers);
+  const mapping = existingMapping || detected;
+  
+  /** @type {string[]} */
+  const missing = [];
+  /** @type {ColumnValidationError[]} */
+  const errors = [];
+  
+  // Check each required column
+  for (const key of REQUIRED_COLUMNS) {
+    const columnName = mapping[key];
+    
+    if (!columnName) {
+      missing.push(key);
+      continue;
+    }
+    
+    // Check if column still exists in headers
+    const columnIndex = headers.indexOf(columnName);
+    if (columnIndex === -1) {
+      missing.push(key);
+      continue;
+    }
+    
+    // Special validation for rating column
+    if (key === 'rating') {
+      if (!validateRatingColumn(data, columnIndex)) {
+        errors.push({
+          column: 'rating',
+          message: `Колонка "${columnName}" не содержит числовых данных`
+        });
+      }
+    }
+  }
+  
+  return {
+    valid: missing.length === 0 && errors.length === 0,
+    missing,
+    detected,
+    errors
+  };
+}
+
+/**
+ * Gets column mapping for a sheet
+ * @param {string} sheetKey
+ * @returns {ColumnMapping|null}
+ */
+export function getColumnMapping(sheetKey) {
+  return state.columnMappings.get(sheetKey) || loadColumnMapping(sheetKey);
+}
+
+/**
+ * Sets and saves column mapping for a sheet
+ * @param {string} sheetKey
+ * @param {ColumnMapping} mapping
+ */
+export function setColumnMapping(sheetKey, mapping) {
+  state.columnMappings.set(sheetKey, mapping);
+  saveColumnMapping(sheetKey, mapping);
+  notify('columnMappings');
+}
+
+/**
+ * Gets column index from mapping
+ * @param {string[]} headers
+ * @param {ColumnMapping} mapping
+ * @param {string} columnKey
+ * @returns {number} -1 if not found
+ */
+function getColumnIndexFromMapping(headers, mapping, columnKey) {
+  const columnName = mapping[columnKey];
+  if (!columnName) return -1;
+  return headers.indexOf(columnName);
+}
+
+/**
+ * Parses players from sheet data using column mapping
+ * @param {string[]} headers
+ * @param {string[][]} data
+ * @param {ColumnMapping} [mapping] - Optional mapping, auto-detects if not provided
+ * @returns {Map<string, Player>}
+ */
+function parsePlayersFromSheetWithMapping(headers, data, mapping) {
+  const players = new Map();
+  const effectiveMapping = mapping || detectColumnMapping(headers);
+  
+  const nicknameIdx = getColumnIndexFromMapping(headers, effectiveMapping, 'nickname');
+  const battleTagIdx = findColumnIndex(headers, HEADER_PATTERNS.battleTag);
+  const roleIdx = getColumnIndexFromMapping(headers, effectiveMapping, 'role');
+  const ratingIdx = getColumnIndexFromMapping(headers, effectiveMapping, 'rating');
+  const heroesIdx = getColumnIndexFromMapping(headers, effectiveMapping, 'heroes');
+  
+  if (nicknameIdx === -1 && battleTagIdx === -1) {
+    console.warn('[Store] Could not find nickname or battletag column in player sheet');
+    return players;
+  }
+  
+  for (const row of data) {
+    const nickname = nicknameIdx >= 0 ? row[nicknameIdx]?.trim() : '';
+    const battleTag = battleTagIdx >= 0 ? row[battleTagIdx]?.trim() : '';
+    
+    // Need at least one identifier
+    if (!nickname && !battleTag) continue;
+    
+    const roleStr = roleIdx >= 0 ? row[roleIdx]?.trim() : '';
+    const role = normalizeRole(roleStr) || 'dps';
+    
+    const ratingStr = ratingIdx >= 0 ? row[ratingIdx]?.trim() : '0';
+    const rating = parseInt(ratingStr, 10) || 0;
+    
+    const heroes = heroesIdx >= 0 ? row[heroesIdx]?.trim() || '' : '';
+    
+    const player = {
+      nickname: nickname || battleTag,
+      battleTag,
+      role,
+      rating,
+      heroes,
+      rawRow: row
+    };
+    
+    // Store by nickname (primary key)
+    if (nickname) {
+      players.set(nickname.toLowerCase(), player);
+    }
+    
+    // Also store by battleTag for lookup (if different from nickname)
+    if (battleTag && battleTag.toLowerCase() !== nickname.toLowerCase()) {
+      players.set(battleTag.toLowerCase(), player);
+    }
+  }
+  
+  return players;
+}
+
 /**
  * Updates cached sheet data
  * @param {SheetData} data 
+ * @param {ColumnMapping} [mapping] - Optional column mapping
  */
-export function updateSheetData(data) {
+export function updateSheetData(data, mapping) {
   const key = getSheetKey(data.spreadsheetId, data.gid);
   const existing = state.sheets.get(key);
   
@@ -295,8 +532,11 @@ export function updateSheetData(data) {
   state.sheets.set(key, data);
   state.errors.delete(key);
   
-  // Parse players from the sheet data
-  state.parsedPlayers = parsePlayersFromSheet(data.headers, data.data);
+  // Get mapping from parameter, state, or storage
+  const effectiveMapping = mapping || getColumnMapping(key) || detectColumnMapping(data.headers);
+  
+  // Parse players from the sheet data using mapping
+  state.parsedPlayers = parsePlayersFromSheetWithMapping(data.headers, data.data, effectiveMapping);
   
   if (hasChanged) {
     notify('sheetData');

@@ -11,6 +11,7 @@ import * as events from './ui/events.js';
 import { createPollingManager } from './utils/polling.js';
 import { getVersionString, getBuildInfo } from './version.js';
 import { validateTeamsData } from './validation/schema.js';
+import { getSheetKey } from './utils/parser.js';
 
 /** @type {ReturnType<typeof createPollingManager>|null} */
 let pollingManager = null;
@@ -21,15 +22,52 @@ let selectedPlayerRowIndex = null;
 /** @type {string|null} Last rendered player details hash for change detection */
 let lastPlayerDetailsHash = null;
 
+/** @type {boolean} Flag indicating if column mapping modal is currently shown */
+let isColumnMappingPending = false;
+
+/** @type {{headers: string[], data: string[][]}|null} Pending sheet data waiting for column mapping */
+let pendingSheetData = null;
+
 /**
  * Fetches and renders players sheet data
+ * @param {boolean} [skipColumnValidation=false] - Skip column validation (used after mapping confirmed)
  */
-async function fetchAndRenderPlayers() {
+async function fetchAndRenderPlayers(skipColumnValidation = false) {
   const sheet = store.getFirstSheet();
   if (!sheet) return;
   
+  // Don't fetch if we're waiting for column mapping
+  if (isColumnMappingPending) return;
+  
   try {
     const data = await fetchSheet(sheet.spreadsheetId, sheet.gid);
+    const sheetKey = getSheetKey(sheet.spreadsheetId, sheet.gid);
+    
+    // Check if column mapping is needed (only on first load or when not skipped)
+    if (!skipColumnValidation) {
+      const existingMapping = store.getColumnMapping(sheetKey);
+      const validation = store.validateRequiredColumns(data.headers, data.data, existingMapping);
+      
+      if (!validation.valid) {
+        // Show column mapping modal
+        isColumnMappingPending = true;
+        pendingSheetData = { headers: data.headers, data: data.data };
+        
+        if (config.isDev) {
+          console.log('[App] Column mapping needed:', validation);
+        }
+        
+        events.openColumnMappingModal(
+          data.headers, 
+          data.data, 
+          validation.detected, 
+          validation.missing, 
+          validation.errors
+        );
+        return;
+      }
+    }
+    
     store.updateSheetData(data);
     
     // Render table if on players tab
@@ -406,6 +444,47 @@ function onPollingIntervalChange(interval) {
 }
 
 /**
+ * Called when column mapping is confirmed in the modal
+ * @param {import('./storage/persistence.js').ColumnMapping} mapping
+ */
+async function onColumnMappingConfirmed(mapping) {
+  isColumnMappingPending = false;
+  
+  const sheet = store.getFirstSheet();
+  if (!sheet || !pendingSheetData) return;
+  
+  const sheetKey = getSheetKey(sheet.spreadsheetId, sheet.gid);
+  
+  // Update sheet data with new mapping
+  store.updateSheetData({
+    spreadsheetId: sheet.spreadsheetId,
+    gid: sheet.gid,
+    headers: pendingSheetData.headers,
+    data: pendingSheetData.data,
+    lastUpdated: new Date()
+  }, mapping);
+  
+  pendingSheetData = null;
+  
+  // Render the data
+  if (store.getActiveTab() === 'players') {
+    const teams = getParsedTeams();
+    const cached = store.getSheetData(sheet.spreadsheetId, sheet.gid);
+    if (cached) {
+      renderPlayersPanel(cached.headers, cached.data, teams);
+      renderer.showDataDisplay();
+    }
+  }
+  
+  renderer.updateStatusBar(new Date(), true);
+  
+  // Start polling if not already running
+  if (!pollingManager?.isRunning()) {
+    startPolling();
+  }
+}
+
+/**
  * Initializes the application
  */
 async function init() {
@@ -451,7 +530,8 @@ async function init() {
     onTabChange,
     onFilterChange,
     onPlayerRowSelect,
-    onTeamPlayerSelect
+    onTeamPlayerSelect,
+    onColumnMappingConfirmed
   });
   
   // Show tabs if teams sheet is configured

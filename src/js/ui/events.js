@@ -22,6 +22,15 @@ let onPlayerRowSelect = null;
 /** @type {function|null} */
 let onTeamPlayerSelect = null;
 
+/** @type {function|null} */
+let onColumnMappingConfirmed = null;
+
+/** @type {string[]} Cached sheet headers for column mapping validation */
+let cachedSheetHeaders = [];
+
+/** @type {string[][]} Cached sheet data for column mapping validation */
+let cachedSheetData = [];
+
 /**
  * Shows a modal
  * @param {string} modalId 
@@ -549,6 +558,112 @@ function setupPlayerRowClicks() {
   });
 }
 
+// ============================================================================
+// Column Mapping Modal
+// ============================================================================
+
+/**
+ * Opens the column mapping modal with data
+ * @param {string[]} headers - Sheet headers
+ * @param {string[][]} data - Sheet data for validation
+ * @param {import('../storage/persistence.js').ColumnMapping} detectedMapping - Auto-detected mapping
+ * @param {string[]} missingColumns - Missing required columns
+ * @param {import('../state/store.js').ColumnValidationError[]} errors - Validation errors
+ */
+export function openColumnMappingModal(headers, data, detectedMapping, missingColumns, errors) {
+  // Cache data for validation during selection changes
+  cachedSheetHeaders = headers;
+  cachedSheetData = data;
+  
+  renderer.renderColumnMappingModal(headers, detectedMapping, missingColumns, errors);
+  renderer.showColumnMappingModal();
+}
+
+/**
+ * Validates the current column mapping selection
+ */
+function validateCurrentMappingSelection() {
+  const mapping = renderer.getColumnMappingFromModal();
+  
+  // Validate each selected column
+  for (const key of store.REQUIRED_COLUMNS) {
+    const columnName = mapping[key];
+    
+    if (!columnName) {
+      renderer.updateColumnMappingRowStatus(key, false);
+      continue;
+    }
+    
+    // Find column index
+    const columnIndex = cachedSheetHeaders.indexOf(columnName);
+    
+    if (columnIndex === -1) {
+      renderer.updateColumnMappingRowStatus(key, false, 'Колонка не найдена');
+      continue;
+    }
+    
+    // Special validation for rating column
+    if (key === 'rating') {
+      const isNumeric = store.validateRatingColumn(cachedSheetData, columnIndex);
+      if (!isNumeric) {
+        renderer.updateColumnMappingRowStatus(key, false, `Колонка "${columnName}" не содержит числовых данных`);
+        continue;
+      }
+    }
+    
+    renderer.updateColumnMappingRowStatus(key, true);
+  }
+}
+
+/**
+ * Sets up column mapping modal event handlers
+ */
+function setupColumnMappingModal() {
+  const modal = document.getElementById('column-mapping-modal');
+  const closeBtn = document.getElementById('close-column-mapping');
+  const confirmBtn = document.getElementById('confirm-column-mapping');
+  const mappingTable = document.getElementById('column-mapping-table');
+  
+  // Close button
+  closeBtn?.addEventListener('click', () => {
+    renderer.hideColumnMappingModal();
+  });
+  
+  // Backdrop click (only close if sheets are configured)
+  modal?.addEventListener('click', (e) => {
+    if (e.target?.classList?.contains('modal-backdrop') && store.hasConfiguredSheets()) {
+      renderer.hideColumnMappingModal();
+    }
+  });
+  
+  // Handle select changes for live validation
+  mappingTable?.addEventListener('change', (e) => {
+    if (e.target?.classList?.contains('column-mapping-select')) {
+      validateCurrentMappingSelection();
+    }
+  });
+  
+  // Confirm button
+  confirmBtn?.addEventListener('click', () => {
+    const mapping = renderer.getColumnMappingFromModal();
+    
+    // Save mapping
+    const sheet = store.getFirstSheet();
+    if (sheet) {
+      const sheetKey = `${sheet.spreadsheetId}_${sheet.gid}`;
+      store.setColumnMapping(sheetKey, mapping);
+    }
+    
+    // Hide modal
+    renderer.hideColumnMappingModal();
+    
+    // Trigger callback
+    if (onColumnMappingConfirmed) {
+      onColumnMappingConfirmed(mapping);
+    }
+  });
+}
+
 /**
  * Initializes all event handlers
  * @param {Object} callbacks
@@ -558,6 +673,7 @@ function setupPlayerRowClicks() {
  * @param {function} [callbacks.onFilterChange] - Called when a filter is toggled
  * @param {function} [callbacks.onPlayerRowSelect] - Called when a player row is clicked in players table
  * @param {function} [callbacks.onTeamPlayerSelect] - Called when a player is clicked in teams view
+ * @param {function} [callbacks.onColumnMappingConfirmed] - Called when column mapping is confirmed
  */
 export function initializeEvents(callbacks) {
   onSheetConfigured = callbacks.onSheetConfigured || null;
@@ -565,6 +681,7 @@ export function initializeEvents(callbacks) {
   onFilterChange = callbacks.onFilterChange || null;
   onPlayerRowSelect = callbacks.onPlayerRowSelect || null;
   onTeamPlayerSelect = callbacks.onTeamPlayerSelect || null;
+  onColumnMappingConfirmed = callbacks.onColumnMappingConfirmed || null;
   
   setupUrlValidation();
   setupSheetForm();
@@ -575,5 +692,6 @@ export function initializeEvents(callbacks) {
   setupTeamPlayerClicks();
   setupFilterButtons();
   setupPlayerRowClicks();
+  setupColumnMappingModal();
 }
 

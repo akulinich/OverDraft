@@ -144,6 +144,36 @@
       </div>
     </div>
 
+    <!-- Column Mapping Modal -->
+    <div id="column-mapping-modal" class="modal" hidden>
+      <div class="modal-backdrop"></div>
+      <div class="modal-content modal-content-wide">
+        <div class="modal-header">
+          <h2>Настройка колонок</h2>
+          <button id="close-column-mapping" class="btn-icon" aria-label="Close">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-description" id="column-mapping-description">
+            Некоторые обязательные колонки не найдены автоматически.
+            Укажите соответствие колонок в вашей таблице:
+          </p>
+          <div id="column-mapping-table" class="column-mapping-table">
+            <!-- Mapping rows will be rendered here -->
+          </div>
+          <div id="column-mapping-error" class="column-mapping-error" hidden></div>
+        </div>
+        <div class="modal-footer">
+          <button id="confirm-column-mapping" class="btn btn-primary" disabled>
+            <span class="btn-text">Подтвердить</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Main App -->
     <header class="app-header">
       <div class="header-left">
