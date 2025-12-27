@@ -22,6 +22,9 @@ let onPlayerSelect = null;
 /** @type {function|null} */
 let onDraftBack = null;
 
+/** @type {function|null} */
+let onFilterChange = null;
+
 /**
  * Shows a modal
  * @param {string} modalId 
@@ -539,6 +542,36 @@ function setupDraftViewEvents() {
 }
 
 /**
+ * Sets up filter button event handlers
+ */
+function setupFilterButtons() {
+  const filtersContainer = document.getElementById('player-filters');
+  if (!filtersContainer) return;
+  
+  filtersContainer.addEventListener('click', (e) => {
+    const btn = e.target.closest('.filter-btn');
+    if (!btn) return;
+    
+    const filterType = btn.dataset.filter;
+    if (!filterType) return;
+    
+    if (filterType === 'available') {
+      store.toggleFilterAvailableOnly();
+    } else if (filterType === 'tank' || filterType === 'dps' || filterType === 'support') {
+      store.toggleFilterRole(filterType);
+    }
+    
+    // Update button states
+    renderer.updateFilterButtonStates();
+    
+    // Trigger callback to re-render
+    if (onFilterChange) {
+      onFilterChange();
+    }
+  });
+}
+
+/**
  * Initializes all event handlers
  * @param {Object} callbacks
  * @param {function} callbacks.onSheetConfigured - Called when sheet is configured
@@ -547,6 +580,7 @@ function setupDraftViewEvents() {
  * @param {function} [callbacks.onTeamSelect] - Called when a team card is clicked
  * @param {function} [callbacks.onPlayerSelect] - Called when a player is selected in draft view
  * @param {function} [callbacks.onDraftBack] - Called when back button in draft view is clicked
+ * @param {function} [callbacks.onFilterChange] - Called when a filter is toggled
  */
 export function initializeEvents(callbacks) {
   onSheetConfigured = callbacks.onSheetConfigured || null;
@@ -554,6 +588,7 @@ export function initializeEvents(callbacks) {
   onTeamSelect = callbacks.onTeamSelect || null;
   onPlayerSelect = callbacks.onPlayerSelect || null;
   onDraftBack = callbacks.onDraftBack || null;
+  onFilterChange = callbacks.onFilterChange || null;
   
   setupUrlValidation();
   setupSheetForm();
@@ -563,5 +598,6 @@ export function initializeEvents(callbacks) {
   setupTabs(callbacks.onTabChange);
   setupTeamCardClicks();
   setupDraftViewEvents();
+  setupFilterButtons();
 }
 

@@ -28,7 +28,8 @@ async function fetchAndRenderPlayers() {
     
     // Render table if on players tab
     if (store.getActiveTab() === 'players') {
-      renderer.renderTable(data.headers, data.data);
+      const teams = getParsedTeams();
+      renderer.renderTable(data.headers, data.data, teams);
       renderer.showDataDisplay();
     }
     renderer.updateStatusBar(data.lastUpdated, true);
@@ -144,12 +145,18 @@ async function onSheetConfigured() {
 async function onTabChange(tab) {
   renderer.showTab(tab);
   
+  // Show filters only on players and draft tabs
+  const showFilters = tab === 'players' || tab === 'draft';
+  renderer.updateFiltersVisibility(showFilters);
+  renderer.updateFilterButtonStates();
+  
   if (tab === 'players') {
     const sheet = store.getFirstSheet();
     if (sheet) {
       const cached = store.getSheetData(sheet.spreadsheetId, sheet.gid);
       if (cached) {
-        renderer.renderTable(cached.headers, cached.data);
+        const teams = getParsedTeams();
+        renderer.renderTable(cached.headers, cached.data, teams);
         renderer.showDataDisplay();
       }
     }
@@ -206,6 +213,8 @@ function onTeamSelect(teamName) {
   // Render immediately with fresh data
   const unselectedByRole = store.getUnselectedPlayersByRole(teams);
   renderer.showTab('draft');
+  renderer.updateFiltersVisibility(true);
+  renderer.updateFilterButtonStates();
   renderer.renderDraftView(team, unselectedByRole);
 }
 
@@ -251,6 +260,31 @@ function onDraftBack() {
   store.setSelectedPlayer(null);
   store.setActiveTab('teams');
   onTabChange('teams');
+}
+
+/**
+ * Called when a filter is toggled
+ */
+function onFilterChange() {
+  const activeTab = store.getActiveTab();
+  const teams = getParsedTeams();
+  
+  if (activeTab === 'players') {
+    const sheet = store.getFirstSheet();
+    if (sheet) {
+      const cached = store.getSheetData(sheet.spreadsheetId, sheet.gid);
+      if (cached) {
+        renderer.renderTable(cached.headers, cached.data, teams);
+      }
+    }
+  } else if (activeTab === 'draft') {
+    const selectedTeam = store.getSelectedTeam();
+    if (selectedTeam) {
+      const freshTeam = teams.find(t => t.name === selectedTeam.name) || selectedTeam;
+      const unselectedByRole = store.getUnselectedPlayersByRole(teams);
+      renderer.renderDraftView(freshTeam, unselectedByRole);
+    }
+  }
 }
 
 /**
@@ -309,11 +343,16 @@ async function init() {
     onTabChange,
     onTeamSelect,
     onPlayerSelect,
-    onDraftBack
+    onDraftBack,
+    onFilterChange
   });
   
   // Show tabs if teams sheet is configured
   renderer.updateTabsVisibility(store.hasTeamsSheet());
+  
+  // Show filters on players tab by default
+  renderer.updateFiltersVisibility(store.getActiveTab() === 'players' || store.getActiveTab() === 'draft');
+  renderer.updateFilterButtonStates();
   
   // Check if sheets are configured
   if (store.hasConfiguredSheets()) {

@@ -23,6 +23,12 @@ import { getSheetKey } from '../utils/parser.js';
  */
 
 /**
+ * @typedef {Object} FilterState
+ * @property {boolean} availableOnly - Show only players not assigned to any team
+ * @property {'tank'|'dps'|'support'|null} role - Filter by role, null = all roles
+ */
+
+/**
  * @typedef {Object} AppState
  * @property {Map<string, SheetData>} sheets - Cached sheet data
  * @property {SheetConfig[]} configuredSheets - User-configured sheets
@@ -38,6 +44,7 @@ import { getSheetKey } from '../utils/parser.js';
  * @property {'players'|'teams'|'draft'} activeTab - Currently active tab
  * @property {boolean} overfastLoaded - Whether OverFast API data is loaded
  * @property {boolean} overfastLoading - Whether OverFast API data is currently loading
+ * @property {FilterState} filters - Player list filters
  */
 
 /**
@@ -62,7 +69,11 @@ let state = {
   theme: 'dark',
   activeTab: 'players',
   overfastLoaded: false,
-  overfastLoading: false
+  overfastLoading: false,
+  filters: {
+    availableOnly: false,
+    role: null
+  }
 };
 
 /** Column header patterns for player data parsing */
@@ -575,6 +586,99 @@ export function isOverfastLoaded() {
  */
 export function isOverfastLoading() {
   return state.overfastLoading;
+}
+
+// ============================================================================
+// Filter Functions
+// ============================================================================
+
+/**
+ * Gets current filter state
+ * @returns {FilterState}
+ */
+export function getFilters() {
+  return state.filters;
+}
+
+/**
+ * Sets the available-only filter
+ * @param {boolean} availableOnly
+ */
+export function setFilterAvailableOnly(availableOnly) {
+  state.filters = { ...state.filters, availableOnly };
+  notify('filters');
+}
+
+/**
+ * Sets the role filter
+ * @param {'tank'|'dps'|'support'|null} role - null to show all roles
+ */
+export function setFilterRole(role) {
+  state.filters = { ...state.filters, role };
+  notify('filters');
+}
+
+/**
+ * Toggles the available-only filter
+ */
+export function toggleFilterAvailableOnly() {
+  state.filters = { ...state.filters, availableOnly: !state.filters.availableOnly };
+  notify('filters');
+}
+
+/**
+ * Toggles a role filter (same role = clear, different role = set)
+ * @param {'tank'|'dps'|'support'} role
+ */
+export function toggleFilterRole(role) {
+  state.filters = {
+    ...state.filters,
+    role: state.filters.role === role ? null : role
+  };
+  notify('filters');
+}
+
+/**
+ * Resets all filters to default values
+ */
+export function resetFilters() {
+  state.filters = { availableOnly: false, role: null };
+  notify('filters');
+}
+
+/**
+ * Gets filtered players based on current filter state
+ * @param {Team[]} teams - All teams to check for availability
+ * @returns {Player[]}
+ */
+export function getFilteredPlayers(teams) {
+  const { availableOnly, role } = state.filters;
+  const assigned = getAssignedPlayerNicknames(teams);
+  const addedPlayers = new Set();
+  const result = [];
+  
+  for (const player of state.parsedPlayers.values()) {
+    const playerKey = player.nickname.toLowerCase();
+    
+    // Skip duplicates
+    if (addedPlayers.has(playerKey)) continue;
+    
+    // Apply available-only filter
+    if (availableOnly) {
+      const isAssigned = 
+        assigned.has(player.nickname.toLowerCase()) ||
+        (player.battleTag && assigned.has(player.battleTag.toLowerCase()));
+      if (isAssigned) continue;
+    }
+    
+    // Apply role filter
+    if (role !== null && player.role !== role) continue;
+    
+    result.push(player);
+    addedPlayers.add(playerKey);
+  }
+  
+  return result;
 }
 
 

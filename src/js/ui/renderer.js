@@ -5,6 +5,7 @@
 import { createElement, escapeHtml, getRoleClass, getRatingClass, formatRelativeTime, createRoleIcon, createHeroIconsContainer, createRankBadge } from './components.js';
 import { validateTeamsData, formatValidationErrors, getSchemaDocumentation } from '../validation/schema.js';
 import { isLoaded as isOverfastLoaded } from '../api/overfast.js';
+import * as store from '../state/store.js';
 
 /** @type {Map<string, string>} Cache of previous row data for change detection */
 const previousRowData = new Map();
@@ -137,19 +138,57 @@ function normalizeRoleValue(value) {
 }
 
 /**
+ * Applies filters to table data rows
+ * @param {string[][]} data - Raw row data
+ * @param {string[]} headers - Column headers
+ * @param {import('../validation/schema.js').Team[]} teams - Teams for availability check
+ * @returns {string[][]} Filtered data rows
+ */
+function applyFiltersToTableData(data, headers, teams) {
+  const filters = store.getFilters();
+  
+  // If no filters active, return original data
+  if (!filters.availableOnly && filters.role === null) {
+    return data;
+  }
+  
+  // Get filtered players from store
+  const filteredPlayers = store.getFilteredPlayers(teams);
+  const filteredNicknames = new Set(filteredPlayers.map(p => p.nickname.toLowerCase()));
+  
+  // Find nickname column index
+  const nicknameIdx = headers.findIndex(h => 
+    /^(ник|никнейм|nickname|nick|имя|name|игрок|player)/i.test(h.trim())
+  );
+  
+  if (nicknameIdx === -1) {
+    return data; // Can't filter without nickname column
+  }
+  
+  return data.filter(row => {
+    const nickname = row[nicknameIdx]?.trim()?.toLowerCase();
+    return nickname && filteredNicknames.has(nickname);
+  });
+}
+
+/**
  * Renders table body with data rows
  * @param {string[][]} data 
  * @param {string[]} headers 
+ * @param {import('../validation/schema.js').Team[]} [teams] - Optional teams for filtering
  */
-export function renderTableBody(data, headers) {
+export function renderTableBody(data, headers, teams = []) {
   const tbody = document.getElementById('table-body');
   if (!tbody) return;
+  
+  // Apply filters to data
+  const filteredData = applyFiltersToTableData(data, headers, teams);
   
   // Create document fragment for efficient DOM updates
   const fragment = document.createDocumentFragment();
   const newRowData = new Map();
   
-  data.forEach((row, rowIndex) => {
+  filteredData.forEach((row, rowIndex) => {
     const tr = createElement('tr');
     const rowKey = `row_${rowIndex}`;
     const rowString = JSON.stringify(row);
@@ -184,10 +223,11 @@ export function renderTableBody(data, headers) {
  * Renders the full table
  * @param {string[]} headers 
  * @param {string[][]} data 
+ * @param {import('../validation/schema.js').Team[]} [teams] - Optional teams for filtering
  */
-export function renderTable(headers, data) {
+export function renderTable(headers, data, teams = []) {
   renderTableHeader(headers);
-  renderTableBody(data, headers);
+  renderTableBody(data, headers, teams);
 }
 
 /**
@@ -345,6 +385,34 @@ export function updateTabsVisibility(showTabs) {
   if (tabs) {
     tabs.hidden = !showTabs;
   }
+}
+
+/**
+ * Updates filters visibility
+ * @param {boolean} showFilters 
+ */
+export function updateFiltersVisibility(showFilters) {
+  const filters = document.getElementById('player-filters');
+  if (filters) {
+    filters.hidden = !showFilters;
+  }
+}
+
+/**
+ * Updates filter button states based on current filter state
+ */
+export function updateFilterButtonStates() {
+  const filters = store.getFilters();
+  
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    const filterType = btn.dataset.filter;
+    
+    if (filterType === 'available') {
+      btn.classList.toggle('active', filters.availableOnly);
+    } else if (filterType === 'tank' || filterType === 'dps' || filterType === 'support') {
+      btn.classList.toggle('active', filters.role === filterType);
+    }
+  });
 }
 
 /**
@@ -753,12 +821,26 @@ function renderDraftPlayerPool(playersByRole) {
   
   container.innerHTML = '';
   
-  // Combine all players and sort by rating descending
-  const allPlayers = [
-    ...playersByRole.tank,
-    ...playersByRole.dps,
-    ...playersByRole.support
-  ].sort((a, b) => b.rating - a.rating);
+  // Get current role filter
+  const filters = store.getFilters();
+  const roleFilter = filters.role;
+  
+  // Combine players based on role filter
+  let allPlayers;
+  if (roleFilter) {
+    // Only show players of the filtered role
+    allPlayers = [...playersByRole[roleFilter]];
+  } else {
+    // Show all players
+    allPlayers = [
+      ...playersByRole.tank,
+      ...playersByRole.dps,
+      ...playersByRole.support
+    ];
+  }
+  
+  // Sort by rating descending
+  allPlayers.sort((a, b) => b.rating - a.rating);
   
   if (allPlayers.length === 0) {
     container.innerHTML = '<div class="pool-empty">Нет доступных игроков</div>';
