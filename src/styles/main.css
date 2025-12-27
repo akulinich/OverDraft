@@ -747,7 +747,27 @@ body::before {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   opacity: 0.6;
+}
+
+.status-bar .copyright {
   margin-left: auto;
+  font-size: 0.75rem;
+  opacity: 0.5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.github-link {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.github-link:hover {
+  color: var(--text-primary);
+  opacity: 1;
 }
 
 .version-section {
