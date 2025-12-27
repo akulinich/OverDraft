@@ -14,7 +14,8 @@ import { getSheetKey } from '../utils/parser.js';
 
 /**
  * @typedef {Object} Player
- * @property {string} nickname - Player nickname
+ * @property {string} nickname - Player nickname (Discord or display name)
+ * @property {string} battleTag - Player BattleTag (if available)
  * @property {'tank'|'dps'|'support'} role - Player role
  * @property {number} rating - Player rating
  * @property {string} heroes - Player heroes (comma-separated)
@@ -62,7 +63,8 @@ let state = {
 
 /** Column header patterns for player data parsing */
 const HEADER_PATTERNS = {
-  nickname: /^(никнейм|nickname|nick|имя|name|игрок|player)/i,
+  nickname: /^(ник|никнейм|nickname|nick|имя|name|игрок|player)/i,
+  battleTag: /^(battletag|battle.?tag|тег|btag)/i,
   role: /^(роль|role)/i,
   rating: /^(рейтинг|rating|sr|ранг|rank)/i,
   heroes: /^(герои|heroes|hero|персонажи|characters)/i
@@ -214,18 +216,22 @@ function parsePlayersFromSheet(headers, data) {
   const players = new Map();
   
   const nicknameIdx = findColumnIndex(headers, HEADER_PATTERNS.nickname);
+  const battleTagIdx = findColumnIndex(headers, HEADER_PATTERNS.battleTag);
   const roleIdx = findColumnIndex(headers, HEADER_PATTERNS.role);
   const ratingIdx = findColumnIndex(headers, HEADER_PATTERNS.rating);
   const heroesIdx = findColumnIndex(headers, HEADER_PATTERNS.heroes);
   
-  if (nicknameIdx === -1) {
-    console.warn('[Store] Could not find nickname column in player sheet');
+  if (nicknameIdx === -1 && battleTagIdx === -1) {
+    console.warn('[Store] Could not find nickname or battletag column in player sheet');
     return players;
   }
   
   for (const row of data) {
-    const nickname = row[nicknameIdx]?.trim();
-    if (!nickname) continue;
+    const nickname = nicknameIdx >= 0 ? row[nicknameIdx]?.trim() : '';
+    const battleTag = battleTagIdx >= 0 ? row[battleTagIdx]?.trim() : '';
+    
+    // Need at least one identifier
+    if (!nickname && !battleTag) continue;
     
     const roleStr = roleIdx >= 0 ? row[roleIdx]?.trim() : '';
     const role = normalizeRole(roleStr) || 'dps';
@@ -235,13 +241,24 @@ function parsePlayersFromSheet(headers, data) {
     
     const heroes = heroesIdx >= 0 ? row[heroesIdx]?.trim() || '' : '';
     
-    players.set(nickname.toLowerCase(), {
-      nickname,
+    const player = {
+      nickname: nickname || battleTag,
+      battleTag,
       role,
       rating,
       heroes,
       rawRow: row
-    });
+    };
+    
+    // Store by nickname (primary key)
+    if (nickname) {
+      players.set(nickname.toLowerCase(), player);
+    }
+    
+    // Also store by battleTag for lookup (if different from nickname)
+    if (battleTag && battleTag.toLowerCase() !== nickname.toLowerCase()) {
+      players.set(battleTag.toLowerCase(), player);
+    }
   }
   
   return players;
@@ -493,9 +510,23 @@ export function getUnselectedPlayersByRole(teams) {
     support: []
   };
   
+  // Track already added players to avoid duplicates
+  // (same player may be stored under both nickname and battleTag)
+  const addedPlayers = new Set();
+  
   for (const player of state.parsedPlayers.values()) {
-    if (!assigned.has(player.nickname.toLowerCase())) {
+    // Skip if already added (duplicate entry)
+    const playerKey = player.nickname.toLowerCase();
+    if (addedPlayers.has(playerKey)) continue;
+    
+    // Check if player is assigned by either nickname or battleTag
+    const isAssigned = 
+      assigned.has(player.nickname.toLowerCase()) ||
+      (player.battleTag && assigned.has(player.battleTag.toLowerCase()));
+    
+    if (!isAssigned) {
       result[player.role].push(player);
+      addedPlayers.add(playerKey);
     }
   }
   

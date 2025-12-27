@@ -166,8 +166,10 @@ async function onTabChange(tab) {
     const selectedTeam = store.getSelectedTeam();
     if (selectedTeam) {
       const teams = getParsedTeams();
+      // Use fresh team data from parsed teams, not the cached selectedTeam
+      const freshTeam = teams.find(t => t.name === selectedTeam.name) || selectedTeam;
       const unselectedByRole = store.getUnselectedPlayersByRole(teams);
-      renderer.renderDraftView(selectedTeam, unselectedByRole);
+      renderer.renderDraftView(freshTeam, unselectedByRole);
     }
   }
 }
@@ -199,7 +201,11 @@ function onTeamSelect(teamName) {
   
   store.setSelectedTeam(team);
   store.setActiveTab('draft');
-  onTabChange('draft');
+  
+  // Render immediately with fresh data
+  const unselectedByRole = store.getUnselectedPlayersByRole(teams);
+  renderer.showTab('draft');
+  renderer.renderDraftView(team, unselectedByRole);
 }
 
 /**
