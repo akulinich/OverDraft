@@ -36,6 +36,8 @@ import { getSheetKey } from '../utils/parser.js';
  * @property {number} pollingInterval
  * @property {'light'|'dark'} theme
  * @property {'players'|'teams'|'draft'} activeTab - Currently active tab
+ * @property {boolean} overfastLoaded - Whether OverFast API data is loaded
+ * @property {boolean} overfastLoading - Whether OverFast API data is currently loading
  */
 
 /**
@@ -58,7 +60,9 @@ let state = {
   errors: new Map(),
   pollingInterval: 1000,
   theme: 'dark',
-  activeTab: 'players'
+  activeTab: 'players',
+  overfastLoaded: false,
+  overfastLoading: false
 };
 
 /** Column header patterns for player data parsing */
@@ -536,6 +540,41 @@ export function getUnselectedPlayersByRole(teams) {
   result.support.sort((a, b) => b.rating - a.rating);
   
   return result;
+}
+
+/**
+ * Sets OverFast loading state
+ * @param {boolean} loading
+ */
+export function setOverfastLoading(loading) {
+  state.overfastLoading = loading;
+  notify('overfastLoading');
+}
+
+/**
+ * Sets OverFast loaded state
+ * @param {boolean} loaded
+ */
+export function setOverfastLoaded(loaded) {
+  state.overfastLoaded = loaded;
+  state.overfastLoading = false;
+  notify('overfastLoaded');
+}
+
+/**
+ * Checks if OverFast data is loaded
+ * @returns {boolean}
+ */
+export function isOverfastLoaded() {
+  return state.overfastLoaded;
+}
+
+/**
+ * Checks if OverFast data is currently loading
+ * @returns {boolean}
+ */
+export function isOverfastLoading() {
+  return state.overfastLoading;
 }
 
 

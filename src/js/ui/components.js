@@ -2,6 +2,9 @@
  * UI component utilities
  */
 
+import { getRole, getHero, parseHeroesString, isLoaded as isOverfastLoaded } from '../api/overfast.js';
+import { getRankFromRating } from '../utils/ranks.js';
+
 /**
  * Creates an HTML element with attributes and content
  * @param {string} tag 
@@ -97,6 +100,137 @@ export function formatRelativeTime(date) {
   
   const hours = Math.floor(minutes / 60);
   return `${hours}h ago`;
+}
+
+/**
+ * Creates a role icon element
+ * @param {string} role - Role key ('tank', 'dps', 'damage', 'support')
+ * @param {Object} [options]
+ * @param {string} [options.size='sm'] - Icon size ('sm', 'md', 'lg')
+ * @returns {HTMLElement}
+ */
+export function createRoleIcon(role, options = {}) {
+  const { size = 'sm' } = options;
+  const normalizedRole = role === 'dps' ? 'damage' : role;
+  const roleData = getRole(normalizedRole);
+  
+  if (roleData && isOverfastLoaded()) {
+    const img = createElement('img', {
+      src: roleData.icon,
+      alt: roleData.name,
+      title: roleData.name,
+      className: `role-icon role-icon-${size}`
+    });
+    return img;
+  }
+  
+  // Fallback to text if OverFast not loaded
+  const fallbackLabel = role === 'tank' ? 'T' : role === 'support' ? 'S' : 'D';
+  return createElement('span', { className: `role-badge-text role-${normalizedRole}` }, fallbackLabel);
+}
+
+/**
+ * Creates a hero icon element
+ * @param {string} heroNameOrKey - Hero name or key
+ * @param {Object} [options]
+ * @param {string} [options.size='sm'] - Icon size ('sm', 'md', 'lg')
+ * @returns {HTMLElement|null}
+ */
+export function createHeroIcon(heroNameOrKey, options = {}) {
+  const { size = 'sm' } = options;
+  const heroData = getHero(heroNameOrKey);
+  
+  if (heroData && isOverfastLoaded()) {
+    const img = createElement('img', {
+      src: heroData.portrait,
+      alt: heroData.name,
+      title: heroData.name,
+      className: `hero-icon hero-icon-${size}`
+    });
+    return img;
+  }
+  
+  return null;
+}
+
+/**
+ * Creates hero icons from a comma-separated string
+ * @param {string} heroesString - e.g., "Ana, D.Va, Soldier: 76"
+ * @param {Object} [options]
+ * @param {string} [options.size='sm'] - Icon size
+ * @param {number} [options.maxIcons=5] - Maximum icons to show
+ * @returns {HTMLElement}
+ */
+export function createHeroIconsContainer(heroesString, options = {}) {
+  const { size = 'sm', maxIcons = 5 } = options;
+  const container = createElement('span', { className: 'hero-icons-container' });
+  
+  if (!heroesString || !isOverfastLoaded()) {
+    // Fallback to text
+    container.textContent = heroesString || '';
+    return container;
+  }
+  
+  const heroes = parseHeroesString(heroesString);
+  const displayHeroes = heroes.slice(0, maxIcons);
+  const remaining = heroes.length - maxIcons;
+  
+  for (const hero of displayHeroes) {
+    const img = createElement('img', {
+      src: hero.portrait,
+      alt: hero.name,
+      title: hero.name,
+      className: `hero-icon hero-icon-${size}`
+    });
+    container.appendChild(img);
+  }
+  
+  if (remaining > 0) {
+    const more = createElement('span', { className: 'hero-icons-more' }, `+${remaining}`);
+    container.appendChild(more);
+  }
+  
+  // If no heroes were matched, show original text
+  if (displayHeroes.length === 0 && heroesString) {
+    container.textContent = heroesString;
+  }
+  
+  return container;
+}
+
+/**
+ * Creates a rank tier icon with rating
+ * @param {number|string} rating - Numeric rating
+ * @param {Object} [options]
+ * @param {boolean} [options.showNumber=true] - Show rating number
+ * @param {string} [options.size='sm'] - Icon size ('sm', 'md', 'lg')
+ * @returns {HTMLElement}
+ */
+export function createRankBadge(rating, options = {}) {
+  const { showNumber = true, size = 'sm' } = options;
+  const container = createElement('span', { className: `rank-badge rank-badge-${size}` });
+  
+  const rankInfo = getRankFromRating(rating);
+  
+  if (rankInfo && rankInfo.tierIcon) {
+    const img = createElement('img', {
+      src: rankInfo.tierIcon,
+      alt: rankInfo.label,
+      title: rankInfo.label,
+      className: `rank-icon rank-icon-${size}`
+    });
+    container.appendChild(img);
+  }
+  
+  if (showNumber) {
+    const ratingClass = getRatingClass(String(rating));
+    const numSpan = createElement('span', { 
+      className: `rank-number ${ratingClass}` 
+    }, String(rating));
+    container.appendChild(numSpan);
+  }
+  
+  return container;
 }
 
 

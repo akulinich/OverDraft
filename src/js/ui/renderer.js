@@ -2,8 +2,9 @@
  * DOM rendering functions
  */
 
-import { createElement, escapeHtml, getRoleClass, getRatingClass, formatRelativeTime } from './components.js';
+import { createElement, escapeHtml, getRoleClass, getRatingClass, formatRelativeTime, createRoleIcon, createHeroIconsContainer, createRankBadge } from './components.js';
 import { validateTeamsData, formatValidationErrors, getSchemaDocumentation } from '../validation/schema.js';
+import { isLoaded as isOverfastLoaded } from '../api/overfast.js';
 
 /** @type {Map<string, string>} Cache of previous row data for change detection */
 const previousRowData = new Map();
@@ -48,6 +49,28 @@ function isRoleColumn(header) {
 }
 
 /**
+ * Determines if a column contains heroes data based on header
+ * @param {string} header 
+ * @returns {boolean}
+ */
+function isHeroesColumn(header) {
+  const lower = header.toLowerCase();
+  return lower.includes('герои') || lower.includes('heroes') || lower.includes('hero') || 
+         lower.includes('персонажи') || lower.includes('characters');
+}
+
+/**
+ * Determines if a column is a comment/notes column (should not render icons)
+ * @param {string} header 
+ * @returns {boolean}
+ */
+function isCommentColumn(header) {
+  const lower = header.toLowerCase();
+  return lower.includes('комментарий') || lower.includes('comment') || lower.includes('notes') ||
+         lower.includes('заметки') || lower.includes('примечание');
+}
+
+/**
  * Renders a single cell with appropriate styling
  * @param {string} value 
  * @param {string} header 
@@ -57,27 +80,60 @@ function isRoleColumn(header) {
 function renderCell(value, header, colIndex) {
   const td = createElement('td');
   
-  // Apply role-specific styling
-  if (isRoleColumn(header)) {
-    const roleClass = getRoleClass(value);
-    if (roleClass) td.classList.add(roleClass);
+  // Skip icon rendering for comment columns
+  if (isCommentColumn(header)) {
     td.textContent = value;
     return td;
   }
   
-  // Apply rating-specific styling
-  if (isRatingColumn(header)) {
-    const ratingClass = getRatingClass(value);
-    if (ratingClass) {
-      const badge = createElement('span', { className: `rating-badge ${ratingClass}` }, value);
-      td.appendChild(badge);
-      return td;
+  // Apply role-specific styling with icon
+  if (isRoleColumn(header)) {
+    td.classList.add('cell-role');
+    const normalizedRole = normalizeRoleValue(value);
+    if (normalizedRole && isOverfastLoaded()) {
+      const icon = createRoleIcon(normalizedRole, { size: 'sm' });
+      td.appendChild(icon);
+    } else {
+      const roleClass = getRoleClass(value);
+      if (roleClass) td.classList.add(roleClass);
+      td.textContent = value;
     }
+    return td;
+  }
+  
+  // Apply rating-specific styling with rank icon
+  if (isRatingColumn(header)) {
+    td.classList.add('cell-rating');
+    const rankBadge = createRankBadge(value, { showNumber: true, size: 'sm' });
+    td.appendChild(rankBadge);
+    return td;
+  }
+  
+  // Apply heroes column with icons
+  if (isHeroesColumn(header) && value) {
+    td.classList.add('cell-heroes');
+    const heroIcons = createHeroIconsContainer(value, { size: 'sm', maxIcons: 5 });
+    td.appendChild(heroIcons);
+    return td;
   }
   
   // Default: escape and display text
   td.textContent = value;
   return td;
+}
+
+/**
+ * Normalizes role value from sheet to standard format
+ * @param {string} value 
+ * @returns {'tank'|'dps'|'support'|null}
+ */
+function normalizeRoleValue(value) {
+  if (!value || typeof value !== 'string') return null;
+  const lower = value.toLowerCase().trim();
+  if (lower.includes('танк') || lower.includes('tank')) return 'tank';
+  if (lower.includes('дпс') || lower.includes('дд') || lower.includes('dd') || lower.includes('dps') || lower.includes('damage') || lower.includes('дамаг')) return 'dps';
+  if (lower.includes('саппорт') || lower.includes('суппорт') || lower.includes('сап') || lower.includes('хил') || lower.includes('support') || lower.includes('heal')) return 'support';
+  return null;
 }
 
 /**
@@ -377,8 +433,9 @@ function createTeamCard(team) {
   header.appendChild(name);
   
   if (team.avgRating) {
-    const rating = createElement('span', { className: 'team-rating' }, String(team.avgRating));
-    header.appendChild(rating);
+    const rankBadge = createRankBadge(team.avgRating, { showNumber: true, size: 'sm' });
+    rankBadge.classList.add('team-rating');
+    header.appendChild(rankBadge);
   }
   
   card.appendChild(header);
@@ -389,23 +446,20 @@ function createTeamCard(team) {
   team.players.forEach(player => {
     const playerRow = createElement('div', { className: 'team-player' });
     
-    // Role badge
-    const roleLabel = getRoleBadgeLabel(player.role);
-    const roleBadge = createElement('span', { 
-      className: `player-role ${player.role}` 
-    }, roleLabel);
-    playerRow.appendChild(roleBadge);
+    // Role icon
+    const roleIcon = createRoleIcon(player.role, { size: 'sm' });
+    const roleWrapper = createElement('span', { className: `player-role ${player.role}` });
+    roleWrapper.appendChild(roleIcon);
+    playerRow.appendChild(roleWrapper);
     
     // Nickname
     const nickname = createElement('span', { className: 'player-nickname' }, player.nickname);
     playerRow.appendChild(nickname);
     
-    // Rating
-    const ratingClass = getRatingClass(String(player.rating));
-    const rating = createElement('span', { 
-      className: `player-rating ${ratingClass}` 
-    }, String(player.rating));
-    playerRow.appendChild(rating);
+    // Rating with rank icon
+    const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'sm' });
+    rankBadge.classList.add('player-rating');
+    playerRow.appendChild(rankBadge);
     
     playersContainer.appendChild(playerRow);
   });
@@ -491,35 +545,38 @@ export function renderDraftView(team, unselectedByRole) {
  */
 function createPlayerRow(player, role, options = {}) {
   const { showRoleBadge = true, isTeamSlot = false } = options;
-  const ratingClass = getRatingClass(String(player.rating));
   
   const row = createElement('div', {
     className: `player-row ${isTeamSlot ? 'team-slot' : 'pool-item'}`,
     dataset: { nickname: player.nickname, role }
   });
   
-  // Role badge (optional)
+  // Role icon (optional)
   if (showRoleBadge) {
-    const roleBadge = createElement('span', {
-      className: `player-row-role ${role}`
-    }, getRoleBadgeLabel(role));
-    row.appendChild(roleBadge);
+    const roleWrapper = createElement('span', { className: `player-row-role ${role}` });
+    const roleIcon = createRoleIcon(role, { size: 'sm' });
+    roleWrapper.appendChild(roleIcon);
+    row.appendChild(roleWrapper);
   }
   
   // Name
   const nameEl = createElement('span', { className: 'player-row-name' }, player.nickname);
   row.appendChild(nameEl);
   
-  // Rating
-  const ratingEl = createElement('span', {
-    className: `player-row-rating ${ratingClass}`
-  }, String(player.rating));
-  row.appendChild(ratingEl);
+  // Rating with rank icon
+  const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'sm' });
+  rankBadge.classList.add('player-row-rating');
+  row.appendChild(rankBadge);
   
-  // Heroes (if available)
+  // Heroes with icons (if available)
   const heroes = player.heroes || '';
-  const heroesEl = createElement('span', { className: 'player-row-heroes' }, heroes);
-  row.appendChild(heroesEl);
+  if (heroes) {
+    const heroesEl = createHeroIconsContainer(heroes, { size: 'sm', maxIcons: 3 });
+    heroesEl.classList.add('player-row-heroes');
+    row.appendChild(heroesEl);
+  } else {
+    row.appendChild(createElement('span', { className: 'player-row-heroes' }, ''));
+  }
   
   return row;
 }
@@ -535,10 +592,10 @@ function createEmptySlot(role) {
     dataset: { role }
   });
   
-  const roleBadge = createElement('span', {
-    className: `player-row-role ${role}`
-  }, getRoleBadgeLabel(role));
-  row.appendChild(roleBadge);
+  const roleWrapper = createElement('span', { className: `player-row-role ${role}` });
+  const roleIcon = createRoleIcon(role, { size: 'sm' });
+  roleWrapper.appendChild(roleIcon);
+  row.appendChild(roleWrapper);
   
   const nameEl = createElement('span', { className: 'player-row-name empty' }, '—');
   row.appendChild(nameEl);
@@ -608,34 +665,52 @@ export function renderDraftPlayerDescription(player) {
   const container = document.getElementById('draft-player-details');
   if (!container) return;
   
-  const ratingClass = getRatingClass(String(player.rating));
+  container.innerHTML = '';
   
-  container.innerHTML = `
-    <div class="player-details-card">
-      <div class="player-details-header">
-        <span class="player-role-large ${player.role}">${getRoleBadgeLabel(player.role)}</span>
-        <h4 class="player-details-name">${escapeHtml(player.nickname)}</h4>
-      </div>
-      <div class="player-details-stats">
-        <div class="player-stat">
-          <span class="stat-label">Рейтинг</span>
-          <span class="stat-value ${ratingClass}">${player.rating}</span>
-        </div>
-        <div class="player-stat">
-          <span class="stat-label">Роль</span>
-          <span class="stat-value">${getRoleLabel(player.role)}</span>
-        </div>
-      </div>
-      ${player.heroes ? `
-        <div class="player-details-heroes">
-          <span class="stat-label">Герои</span>
-          <div class="heroes-list">${escapeHtml(player.heroes)}</div>
-        </div>
-      ` : ''}
-    </div>
-  `;
+  const card = createElement('div', { className: 'player-details-card' });
   
-  // Mark as selected in the container
+  // Header with role icon and name
+  const header = createElement('div', { className: 'player-details-header' });
+  const roleWrapper = createElement('span', { className: `player-role-large ${player.role}` });
+  const roleIcon = createRoleIcon(player.role, { size: 'lg' });
+  roleWrapper.appendChild(roleIcon);
+  header.appendChild(roleWrapper);
+  header.appendChild(createElement('h4', { className: 'player-details-name' }, player.nickname));
+  card.appendChild(header);
+  
+  // Stats section
+  const stats = createElement('div', { className: 'player-details-stats' });
+  
+  // Rating stat with rank badge
+  const ratingStat = createElement('div', { className: 'player-stat' });
+  ratingStat.appendChild(createElement('span', { className: 'stat-label' }, 'Рейтинг'));
+  const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'md' });
+  rankBadge.classList.add('stat-value');
+  ratingStat.appendChild(rankBadge);
+  stats.appendChild(ratingStat);
+  
+  // Role stat with icon
+  const roleStat = createElement('div', { className: 'player-stat' });
+  roleStat.appendChild(createElement('span', { className: 'stat-label' }, 'Роль'));
+  const roleStatValue = createElement('span', { className: 'stat-value' });
+  roleStatValue.appendChild(createRoleIcon(player.role, { size: 'sm' }));
+  roleStatValue.appendChild(document.createTextNode(' ' + getRoleLabel(player.role)));
+  roleStat.appendChild(roleStatValue);
+  stats.appendChild(roleStat);
+  
+  card.appendChild(stats);
+  
+  // Heroes section with icons
+  if (player.heroes) {
+    const heroesSection = createElement('div', { className: 'player-details-heroes' });
+    heroesSection.appendChild(createElement('span', { className: 'stat-label' }, 'Герои'));
+    const heroIcons = createHeroIconsContainer(player.heroes, { size: 'md', maxIcons: 8 });
+    heroIcons.classList.add('heroes-list');
+    heroesSection.appendChild(heroIcons);
+    card.appendChild(heroesSection);
+  }
+  
+  container.appendChild(card);
   container.classList.add('has-player');
 }
 

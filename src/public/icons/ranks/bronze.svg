@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="bronzeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#cd8032"/>
+      <stop offset="50%" style="stop-color:#a56729"/>
+      <stop offset="100%" style="stop-color:#8b5a2b"/>
+    </linearGradient>
+  </defs>
+  <polygon points="16,2 28,10 28,22 16,30 4,22 4,10" fill="url(#bronzeGrad)" stroke="#5c3d1e" stroke-width="1"/>
+  <polygon points="16,6 24,12 24,20 16,26 8,20 8,12" fill="none" stroke="#e8b87a" stroke-width="0.5" opacity="0.6"/>
+</svg>
+

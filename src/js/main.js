@@ -4,6 +4,7 @@
 
 import { config } from './config.js';
 import { fetchSheet, SheetError } from './api/sheets.js';
+import { initOverFastData } from './api/overfast.js';
 import * as store from './state/store.js';
 import * as renderer from './ui/renderer.js';
 import * as events from './ui/events.js';
@@ -288,6 +289,14 @@ async function init() {
   
   // Initialize state from localStorage
   store.initializeState();
+  
+  // Initialize local icons data (heroes, roles, ranks)
+  // This is synchronous since we use local assets
+  await initOverFastData();
+  store.setOverfastLoaded(true);
+  if (config.isDev) {
+    console.log('[OverDraft] Icons data loaded (local assets)');
+  }
   
   // Apply saved theme
   renderer.applyTheme(store.getState().theme);
