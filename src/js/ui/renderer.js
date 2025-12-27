@@ -129,7 +129,7 @@ function renderCell(value, header, colIndex) {
   // Apply heroes column with icons
   if (isHeroesColumn(header) && value) {
     td.classList.add('cell-heroes');
-    const heroIcons = createHeroIconsContainer(value, { size: 'sm', maxIcons: 5 });
+    const heroIcons = createHeroIconsContainer(value, { size: 'md', maxIcons: 5 });
     td.appendChild(heroIcons);
     return td;
   }
