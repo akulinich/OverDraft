@@ -45,6 +45,21 @@ const TIER_DEFINITIONS = [
 ];
 
 /**
+ * Mapping from tier name to webp badge filename
+ * @type {Record<string, string>}
+ */
+const TIER_ICON_FILES = {
+  bronze: 'Badge_1_Bronze.webp',
+  silver: 'Badge_2_Silver.webp',
+  gold: 'Badge_3_Gold.webp',
+  platinum: 'Badge_4_Platinum.webp',
+  diamond: 'Badge_5_Diamond.webp',
+  master: 'Badge_6_Master.webp',
+  grandmaster: 'Badge_7_Grandmaster.webp',
+  champion: 'Badge_8_Champion.webp'
+};
+
+/**
  * Gets local tier icon URL
  * @param {string} tier 
  * @returns {string}
@@ -52,7 +67,8 @@ const TIER_DEFINITIONS = [
 function getLocalTierIcon(tier) {
   // Assets in public/ are served at the root URL
   const base = import.meta.env.BASE_URL || './';
-  return `${base}icons/ranks/${tier}.svg`;
+  const filename = TIER_ICON_FILES[tier] || `${tier}.svg`;
+  return `${base}icons/ranks/${filename}`;
 }
 
 /** Rating step per grade */

@@ -1083,6 +1083,11 @@ body::before {
   color: var(--text-secondary);
 }
 
+.player-rating.rank-badge .rank-icon {
+  width: 24px;
+  height: 24px;
+}
+
 /* Validation Error Box */
 .validation-error-box {
   background: rgba(239, 68, 68, 0.05);
@@ -1719,34 +1724,96 @@ body::before {
 .rank-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .rank-badge-sm .rank-icon {
-  width: 20px;
-  height: 20px;
-}
-
-.rank-badge-md .rank-icon {
   width: 28px;
   height: 28px;
 }
 
-.rank-badge-lg .rank-icon {
+.rank-badge-md .rank-icon {
   width: 36px;
   height: 36px;
+}
+
+.rank-badge-lg .rank-icon {
+  width: 48px;
+  height: 48px;
 }
 
 .rank-icon {
   display: inline-block;
   vertical-align: middle;
   object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+  transition: transform var(--transition-fast), filter var(--transition-fast);
+}
+
+.rank-badge:hover .rank-icon {
+  transform: scale(1.1);
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5)) brightness(1.1);
 }
 
 .rank-number {
   font-family: var(--font-mono);
   font-size: 0.85rem;
-  font-weight: 500;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+/* Tier-colored rank numbers */
+.rank-badge.rank-bronze .rank-number {
+  background: rgba(205, 127, 50, 0.15);
+  border-color: rgba(205, 127, 50, 0.3);
+  color: #cd7f32;
+}
+
+.rank-badge.rank-silver .rank-number {
+  background: rgba(192, 192, 192, 0.15);
+  border-color: rgba(192, 192, 192, 0.3);
+  color: #c0c0c0;
+}
+
+.rank-badge.rank-gold .rank-number {
+  background: rgba(255, 215, 0, 0.15);
+  border-color: rgba(255, 215, 0, 0.3);
+  color: #ffd700;
+}
+
+.rank-badge.rank-platinum .rank-number {
+  background: rgba(79, 209, 197, 0.15);
+  border-color: rgba(79, 209, 197, 0.3);
+  color: #4fd1c5;
+}
+
+.rank-badge.rank-diamond .rank-number {
+  background: rgba(96, 165, 250, 0.15);
+  border-color: rgba(96, 165, 250, 0.3);
+  color: #60a5fa;
+}
+
+.rank-badge.rank-master .rank-number {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+}
+
+.rank-badge.rank-grandmaster .rank-number {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.rank-badge.rank-champion .rank-number {
+  background: rgba(168, 85, 247, 0.15);
+  border-color: rgba(168, 85, 247, 0.3);
+  color: #a855f7;
 }
 
 /* Table cell types */
@@ -1791,16 +1858,17 @@ body::before {
 
 /* Player row rating with rank badge */
 .player-row-rating.rank-badge {
-  gap: 2px;
+  gap: 4px;
 }
 
 .player-row-rating .rank-icon {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
 }
 
 .player-row-rating .rank-number {
   font-size: 0.8rem;
+  padding: 1px 6px;
 }
 
 /* Player details panel - larger role icon */
@@ -1857,12 +1925,10 @@ body::before {
 }
 
 .team-card-header .team-rating .rank-icon {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
 }
 
-.team-card-header .team-rating .rank-number {
-  color: var(--accent-primary);
-}
+/* Team rating inherits tier colors from .rank-badge.rank-* */
 
 

@@ -208,9 +208,13 @@ export function createHeroIconsContainer(heroesString, options = {}) {
  */
 export function createRankBadge(rating, options = {}) {
   const { showNumber = true, size = 'sm' } = options;
-  const container = createElement('span', { className: `rank-badge rank-badge-${size}` });
-  
   const rankInfo = getRankFromRating(rating);
+  
+  // Add tier class for styling
+  const tierClass = rankInfo ? `rank-${rankInfo.tier}` : '';
+  const container = createElement('span', { 
+    className: `rank-badge rank-badge-${size} ${tierClass}`.trim() 
+  });
   
   if (rankInfo && rankInfo.tierIcon) {
     const img = createElement('img', {
@@ -223,9 +227,8 @@ export function createRankBadge(rating, options = {}) {
   }
   
   if (showNumber) {
-    const ratingClass = getRatingClass(String(rating));
     const numSpan = createElement('span', { 
-      className: `rank-number ${ratingClass}` 
+      className: 'rank-number'
     }, String(rating));
     container.appendChild(numSpan);
   }
