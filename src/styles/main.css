@@ -1133,6 +1133,235 @@ body::before {
   display: none;
 }
 
+/* ============================================================================
+   Players Panel - Split View Layout
+   ============================================================================ */
+
+.players-layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: var(--space-xl);
+  min-height: 500px;
+}
+
+@media (max-width: 1024px) {
+  .players-layout {
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+  }
+}
+
+/* Players Table Panel (left) */
+.players-table-panel {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.players-table-panel .table-container {
+  max-height: calc(100vh - 250px);
+  overflow-y: auto;
+}
+
+/* Make table rows clickable */
+.player-table-row {
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.player-table-row:hover {
+  background: rgba(0, 240, 255, 0.05);
+}
+
+.player-table-row.selected {
+  background: rgba(0, 240, 255, 0.1);
+  box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+
+/* Players Details Panel (right) */
+.players-details-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 250px);
+  overflow-y: auto;
+}
+
+.players-details-panel .panel-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 var(--space-lg) 0;
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--border-color);
+}
+
+#player-details-content {
+  flex: 1;
+}
+
+#player-details-content .player-details-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Player Info Card */
+.player-info-card {
+  animation: fadeIn 0.2s ease;
+}
+
+.player-info-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
+}
+
+.player-role-badge {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+}
+
+.player-role-badge.tank {
+  background: rgba(250, 204, 21, 0.15);
+}
+
+.player-role-badge.dps {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.player-role-badge.support {
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.player-role-badge .role-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.player-info-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* Main Stats */
+.player-info-main-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+.player-info-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.player-info-stat .stat-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.player-info-stat .stat-value {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.player-info-stat .stat-role {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* Heroes Section */
+.player-info-heroes {
+  margin-bottom: var(--space-xl);
+}
+
+.player-info-heroes .stat-label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-sm);
+}
+
+.player-info-heroes .heroes-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.player-info-heroes .hero-icon {
+  width: 36px;
+  height: 36px;
+}
+
+/* Additional Fields Section */
+.player-info-additional {
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--border-color);
+}
+
+.player-info-additional .section-label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-md);
+}
+
+.player-info-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.player-info-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-sm);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.player-info-field .field-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.player-info-field .field-value {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
 /* Row animation on data update */
 @keyframes rowHighlight {
   0% { background: rgba(0, 240, 255, 0.1); }

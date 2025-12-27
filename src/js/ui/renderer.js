@@ -7,6 +7,22 @@ import { validateTeamsData, formatValidationErrors, getSchemaDocumentation } fro
 import { isLoaded as isOverfastLoaded } from '../api/overfast.js';
 import * as store from '../state/store.js';
 
+/**
+ * Mandatory column keys in display order
+ * @type {readonly string[]}
+ */
+const MANDATORY_COLUMNS = ['role', 'nickname', 'heroes', 'rating'];
+
+/**
+ * Header patterns for mandatory columns
+ */
+const MANDATORY_HEADER_PATTERNS = {
+  nickname: /^(ник|никнейм|nickname|nick|имя|name|игрок|player)/i,
+  role: /^(роль|role)/i,
+  rating: /^(рейтинг|rating|sr|ранг|rank)/i,
+  heroes: /^(герои|heroes|hero|персонажи|characters)/i
+};
+
 /** @type {Map<string, string>} Cache of previous row data for change detection */
 const previousRowData = new Map();
 
@@ -217,6 +233,227 @@ export function renderTableBody(data, headers, teams = []) {
   // Replace tbody content
   tbody.innerHTML = '';
   tbody.appendChild(fragment);
+}
+
+/**
+ * Finds column indices for mandatory columns
+ * @param {string[]} headers
+ * @returns {{key: string, index: number, header: string}[]}
+ */
+function findMandatoryColumnIndices(headers) {
+  const result = [];
+  
+  for (const key of MANDATORY_COLUMNS) {
+    const pattern = MANDATORY_HEADER_PATTERNS[key];
+    const index = headers.findIndex(h => pattern.test(h.trim()));
+    if (index !== -1) {
+      result.push({ key, index, header: headers[index] });
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Renders players table with only mandatory columns
+ * @param {string[]} headers 
+ * @param {string[][]} data 
+ * @param {import('../validation/schema.js').Team[]} [teams] - Optional teams for filtering
+ */
+export function renderPlayersTable(headers, data, teams = []) {
+  const mandatoryCols = findMandatoryColumnIndices(headers);
+  
+  // Render header with mandatory columns only
+  const thead = document.getElementById('table-header');
+  if (thead) {
+    thead.innerHTML = '';
+    const tr = createElement('tr');
+    
+    for (const col of mandatoryCols) {
+      const th = createElement('th', {}, escapeHtml(col.header));
+      tr.appendChild(th);
+    }
+    
+    thead.appendChild(tr);
+  }
+  
+  // Render body with mandatory columns only
+  const tbody = document.getElementById('table-body');
+  if (!tbody) return;
+  
+  // Apply filters
+  const filteredData = applyFiltersToTableData(data, headers, teams);
+  
+  const fragment = document.createDocumentFragment();
+  
+  filteredData.forEach((row, rowIndex) => {
+    const tr = createElement('tr', { 
+      className: 'player-table-row',
+      dataset: { rowIndex: String(rowIndex) }
+    });
+    
+    for (const col of mandatoryCols) {
+      const value = row[col.index] || '';
+      const td = renderCell(value, col.header, col.index);
+      tr.appendChild(td);
+    }
+    
+    fragment.appendChild(tr);
+  });
+  
+  tbody.innerHTML = '';
+  tbody.appendChild(fragment);
+}
+
+/**
+ * Gets the first player from filtered data
+ * @param {string[]} headers
+ * @param {string[][]} data
+ * @param {import('../validation/schema.js').Team[]} teams
+ * @returns {import('../state/store.js').Player|null}
+ */
+export function getFirstFilteredPlayer(headers, data, teams) {
+  const filteredData = applyFiltersToTableData(data, headers, teams);
+  if (filteredData.length === 0) return null;
+  
+  // Find nickname column index
+  const nicknameIdx = headers.findIndex(h => 
+    MANDATORY_HEADER_PATTERNS.nickname.test(h.trim())
+  );
+  
+  if (nicknameIdx === -1) return null;
+  
+  const nickname = filteredData[0][nicknameIdx]?.trim();
+  if (!nickname) return null;
+  
+  return store.getPlayerByNickname(nickname) || null;
+}
+
+/**
+ * Renders full player details in the right panel
+ * @param {import('../state/store.js').Player} player
+ * @param {string[]} headers - All headers from the sheet
+ */
+export function renderPlayerDetailsPanel(player, headers) {
+  const container = document.getElementById('player-details-content');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  container.classList.add('has-player');
+  
+  const card = createElement('div', { className: 'player-info-card' });
+  
+  // Header with role icon and name
+  const header = createElement('div', { className: 'player-info-header' });
+  const roleWrapper = createElement('span', { className: `player-role-badge ${player.role}` });
+  const roleIcon = createRoleIcon(player.role, { size: 'lg' });
+  roleWrapper.appendChild(roleIcon);
+  header.appendChild(roleWrapper);
+  header.appendChild(createElement('h4', { className: 'player-info-name' }, player.nickname));
+  card.appendChild(header);
+  
+  // Main stats (rating and role)
+  const mainStats = createElement('div', { className: 'player-info-main-stats' });
+  
+  // Rating stat with rank badge
+  const ratingStat = createElement('div', { className: 'player-info-stat' });
+  ratingStat.appendChild(createElement('span', { className: 'stat-label' }, 'Рейтинг'));
+  const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'md' });
+  rankBadge.classList.add('stat-value');
+  ratingStat.appendChild(rankBadge);
+  mainStats.appendChild(ratingStat);
+  
+  // Role stat
+  const roleStat = createElement('div', { className: 'player-info-stat' });
+  roleStat.appendChild(createElement('span', { className: 'stat-label' }, 'Роль'));
+  const roleValue = createElement('span', { className: 'stat-value stat-role' });
+  roleValue.appendChild(createRoleIcon(player.role, { size: 'sm' }));
+  roleValue.appendChild(document.createTextNode(' ' + getRoleDisplayName(player.role)));
+  roleStat.appendChild(roleValue);
+  mainStats.appendChild(roleStat);
+  
+  card.appendChild(mainStats);
+  
+  // Heroes section with icons
+  if (player.heroes) {
+    const heroesSection = createElement('div', { className: 'player-info-heroes' });
+    heroesSection.appendChild(createElement('span', { className: 'stat-label' }, 'Герои'));
+    const heroIcons = createHeroIconsContainer(player.heroes, { size: 'md', maxIcons: 10 });
+    heroIcons.classList.add('heroes-list');
+    heroesSection.appendChild(heroIcons);
+    card.appendChild(heroesSection);
+  }
+  
+  // Additional fields from rawRow (all original columns)
+  if (player.rawRow && player.rawRow.length > 0 && headers.length > 0) {
+    const additionalSection = createElement('div', { className: 'player-info-additional' });
+    additionalSection.appendChild(createElement('span', { className: 'section-label' }, 'Все данные'));
+    
+    const fieldsList = createElement('div', { className: 'player-info-fields' });
+    
+    for (let i = 0; i < headers.length; i++) {
+      const value = player.rawRow[i];
+      if (value === undefined || value === null || value === '') continue;
+      
+      const fieldRow = createElement('div', { className: 'player-info-field' });
+      fieldRow.appendChild(createElement('span', { className: 'field-label' }, headers[i]));
+      fieldRow.appendChild(createElement('span', { className: 'field-value' }, String(value)));
+      fieldsList.appendChild(fieldRow);
+    }
+    
+    additionalSection.appendChild(fieldsList);
+    card.appendChild(additionalSection);
+  }
+  
+  container.appendChild(card);
+}
+
+/**
+ * Clears the player details panel
+ */
+export function clearPlayerDetailsPanel() {
+  const container = document.getElementById('player-details-content');
+  if (!container) return;
+  
+  container.innerHTML = `
+    <div class="player-details-empty">
+      <p>Игрок не выбран</p>
+    </div>
+  `;
+  container.classList.remove('has-player');
+}
+
+/**
+ * Updates selected row highlight in players table
+ * @param {number|null} rowIndex - Selected row index or null to clear
+ */
+export function updatePlayerRowSelection(rowIndex) {
+  // Clear previous selection
+  document.querySelectorAll('.player-table-row.selected').forEach(el => {
+    el.classList.remove('selected');
+  });
+  
+  if (rowIndex === null || rowIndex === undefined) return;
+  
+  // Highlight selected row
+  const row = document.querySelector(`.player-table-row[data-row-index="${rowIndex}"]`);
+  if (row) {
+    row.classList.add('selected');
+  }
+}
+
+/**
+ * Gets human-readable role display name
+ * @param {'tank'|'dps'|'support'} role
+ * @returns {string}
+ */
+function getRoleDisplayName(role) {
+  switch (role) {
+    case 'tank': return 'Танк';
+    case 'dps': return 'ДД';
+    case 'support': return 'Саппорт';
+    default: return role;
+  }
 }
 
 /**

@@ -15,6 +15,12 @@ import { validateTeamsData } from './validation/schema.js';
 /** @type {ReturnType<typeof createPollingManager>|null} */
 let pollingManager = null;
 
+/** @type {number|null} Current selected row index in players table */
+let selectedPlayerRowIndex = null;
+
+/** @type {string|null} Last rendered player details hash for change detection */
+let lastPlayerDetailsHash = null;
+
 /**
  * Fetches and renders players sheet data
  */
@@ -29,7 +35,7 @@ async function fetchAndRenderPlayers() {
     // Render table if on players tab
     if (store.getActiveTab() === 'players') {
       const teams = getParsedTeams();
-      renderer.renderTable(data.headers, data.data, teams);
+      renderPlayersPanel(data.headers, data.data, teams);
       renderer.showDataDisplay();
     }
     renderer.updateStatusBar(data.lastUpdated, true);
@@ -53,6 +59,81 @@ async function fetchAndRenderPlayers() {
     }
     
     store.setError(sheet.spreadsheetId, sheet.gid, err);
+  }
+}
+
+/**
+ * Computes a hash for player details to detect changes
+ * @param {import('./state/store.js').Player|null} player
+ * @returns {string}
+ */
+function computePlayerDetailsHash(player) {
+  if (!player) return '';
+  return JSON.stringify(player.rawRow);
+}
+
+/**
+ * Renders players panel with table and details
+ * @param {string[]} headers
+ * @param {string[][]} data
+ * @param {import('./validation/schema.js').Team[]} teams
+ */
+function renderPlayersPanel(headers, data, teams) {
+  renderer.renderPlayersTable(headers, data, teams);
+  
+  // Try to keep currently selected player
+  const currentPlayer = store.getSelectedPlayer();
+  const filteredData = getFilteredTableData(headers, data, teams);
+  
+  // Find nickname column
+  const nicknameIdx = headers.findIndex(h => 
+    /^(ник|никнейм|nickname|nick|имя|name|игрок|player)/i.test(h.trim())
+  );
+  
+  if (currentPlayer && nicknameIdx !== -1) {
+    // Check if current player is still in filtered data
+    const currentRowIndex = filteredData.findIndex(row => 
+      row[nicknameIdx]?.trim()?.toLowerCase() === currentPlayer.nickname.toLowerCase()
+    );
+    
+    if (currentRowIndex !== -1) {
+      // Player still exists, keep selection
+      selectedPlayerRowIndex = currentRowIndex;
+      
+      // Get fresh player data from store
+      const freshPlayer = store.getPlayerByNickname(currentPlayer.nickname);
+      const newHash = computePlayerDetailsHash(freshPlayer);
+      
+      // Only re-render details if data changed
+      if (newHash !== lastPlayerDetailsHash) {
+        lastPlayerDetailsHash = newHash;
+        renderer.renderPlayerDetailsPanel(freshPlayer || currentPlayer, headers);
+      }
+      
+      renderer.updatePlayerRowSelection(currentRowIndex);
+      return;
+    }
+  }
+  
+  // Auto-select first player if none selected or previous selection not found
+  const firstPlayer = renderer.getFirstFilteredPlayer(headers, data, teams);
+  if (firstPlayer) {
+    store.setSelectedPlayer(firstPlayer);
+    selectedPlayerRowIndex = 0;
+    
+    const newHash = computePlayerDetailsHash(firstPlayer);
+    if (newHash !== lastPlayerDetailsHash) {
+      lastPlayerDetailsHash = newHash;
+      renderer.renderPlayerDetailsPanel(firstPlayer, headers);
+    }
+    
+    renderer.updatePlayerRowSelection(0);
+  } else {
+    store.setSelectedPlayer(null);
+    selectedPlayerRowIndex = null;
+    lastPlayerDetailsHash = null;
+    renderer.clearPlayerDetailsPanel();
+    renderer.updatePlayerRowSelection(null);
   }
 }
 
@@ -156,7 +237,7 @@ async function onTabChange(tab) {
       const cached = store.getSheetData(sheet.spreadsheetId, sheet.gid);
       if (cached) {
         const teams = getParsedTeams();
-        renderer.renderTable(cached.headers, cached.data, teams);
+        renderPlayersPanel(cached.headers, cached.data, teams);
         renderer.showDataDisplay();
       }
     }
@@ -274,7 +355,7 @@ function onFilterChange() {
     if (sheet) {
       const cached = store.getSheetData(sheet.spreadsheetId, sheet.gid);
       if (cached) {
-        renderer.renderTable(cached.headers, cached.data, teams);
+        renderPlayersPanel(cached.headers, cached.data, teams);
       }
     }
   } else if (activeTab === 'draft') {
@@ -285,6 +366,74 @@ function onFilterChange() {
       renderer.renderDraftView(freshTeam, unselectedByRole);
     }
   }
+}
+
+/**
+ * Called when a player row is clicked in the players table
+ * @param {number} rowIndex
+ */
+function onPlayerRowSelect(rowIndex) {
+  const sheet = store.getFirstSheet();
+  if (!sheet) return;
+  
+  const cached = store.getSheetData(sheet.spreadsheetId, sheet.gid);
+  if (!cached) return;
+  
+  const teams = getParsedTeams();
+  
+  // Apply filters to get the actual data being displayed
+  const filteredData = getFilteredTableData(cached.headers, cached.data, teams);
+  if (rowIndex < 0 || rowIndex >= filteredData.length) return;
+  
+  // Find nickname column to look up player
+  const nicknameIdx = cached.headers.findIndex(h => 
+    /^(ник|никнейм|nickname|nick|имя|name|игрок|player)/i.test(h.trim())
+  );
+  
+  if (nicknameIdx === -1) return;
+  
+  const nickname = filteredData[rowIndex][nicknameIdx]?.trim();
+  if (!nickname) return;
+  
+  const player = store.getPlayerByNickname(nickname);
+  if (player) {
+    store.setSelectedPlayer(player);
+    selectedPlayerRowIndex = rowIndex;
+    lastPlayerDetailsHash = computePlayerDetailsHash(player);
+    renderer.renderPlayerDetailsPanel(player, cached.headers);
+    renderer.updatePlayerRowSelection(rowIndex);
+  }
+}
+
+/**
+ * Gets filtered table data based on current filters
+ * @param {string[]} headers
+ * @param {string[][]} data
+ * @param {import('./validation/schema.js').Team[]} teams
+ * @returns {string[][]}
+ */
+function getFilteredTableData(headers, data, teams) {
+  const filters = store.getFilters();
+  
+  if (!filters.availableOnly && filters.role === null) {
+    return data;
+  }
+  
+  const filteredPlayers = store.getFilteredPlayers(teams);
+  const filteredNicknames = new Set(filteredPlayers.map(p => p.nickname.toLowerCase()));
+  
+  const nicknameIdx = headers.findIndex(h => 
+    /^(ник|никнейм|nickname|nick|имя|name|игрок|player)/i.test(h.trim())
+  );
+  
+  if (nicknameIdx === -1) {
+    return data;
+  }
+  
+  return data.filter(row => {
+    const nickname = row[nicknameIdx]?.trim()?.toLowerCase();
+    return nickname && filteredNicknames.has(nickname);
+  });
 }
 
 /**
@@ -344,7 +493,8 @@ async function init() {
     onTeamSelect,
     onPlayerSelect,
     onDraftBack,
-    onFilterChange
+    onFilterChange,
+    onPlayerRowSelect
   });
   
   // Show tabs if teams sheet is configured

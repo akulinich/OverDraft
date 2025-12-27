@@ -25,6 +25,9 @@ let onDraftBack = null;
 /** @type {function|null} */
 let onFilterChange = null;
 
+/** @type {function|null} */
+let onPlayerRowSelect = null;
+
 /**
  * Shows a modal
  * @param {string} modalId 
@@ -572,6 +575,26 @@ function setupFilterButtons() {
 }
 
 /**
+ * Sets up player row click handlers in the players table
+ */
+function setupPlayerRowClicks() {
+  const tableBody = document.getElementById('table-body');
+  if (!tableBody) return;
+  
+  tableBody.addEventListener('click', (e) => {
+    const row = e.target.closest('.player-table-row');
+    if (!row) return;
+    
+    const rowIndex = parseInt(row.dataset.rowIndex, 10);
+    if (isNaN(rowIndex)) return;
+    
+    if (onPlayerRowSelect) {
+      onPlayerRowSelect(rowIndex);
+    }
+  });
+}
+
+/**
  * Initializes all event handlers
  * @param {Object} callbacks
  * @param {function} callbacks.onSheetConfigured - Called when sheet is configured
@@ -581,6 +604,7 @@ function setupFilterButtons() {
  * @param {function} [callbacks.onPlayerSelect] - Called when a player is selected in draft view
  * @param {function} [callbacks.onDraftBack] - Called when back button in draft view is clicked
  * @param {function} [callbacks.onFilterChange] - Called when a filter is toggled
+ * @param {function} [callbacks.onPlayerRowSelect] - Called when a player row is clicked in players table
  */
 export function initializeEvents(callbacks) {
   onSheetConfigured = callbacks.onSheetConfigured || null;
@@ -589,6 +613,7 @@ export function initializeEvents(callbacks) {
   onPlayerSelect = callbacks.onPlayerSelect || null;
   onDraftBack = callbacks.onDraftBack || null;
   onFilterChange = callbacks.onFilterChange || null;
+  onPlayerRowSelect = callbacks.onPlayerRowSelect || null;
   
   setupUrlValidation();
   setupSheetForm();
@@ -599,5 +624,6 @@ export function initializeEvents(callbacks) {
   setupTeamCardClicks();
   setupDraftViewEvents();
   setupFilterButtons();
+  setupPlayerRowClicks();
 }
 

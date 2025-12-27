@@ -231,11 +231,26 @@
 
       <!-- Players Tab -->
       <div id="data-display" class="tab-content" hidden>
-        <div class="table-container">
-          <table id="data-table">
-            <thead id="table-header"></thead>
-            <tbody id="table-body"></tbody>
-          </table>
+        <div class="players-layout">
+          <!-- Left: Players Table Panel -->
+          <div class="players-table-panel">
+            <div class="table-container">
+              <table id="data-table">
+                <thead id="table-header"></thead>
+                <tbody id="table-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Right: Player Details Panel -->
+          <div class="players-details-panel">
+            <h3 class="panel-title">Информация об игроке</h3>
+            <div id="player-details-content">
+              <div class="player-details-empty">
+                <p>Игрок не выбран</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
