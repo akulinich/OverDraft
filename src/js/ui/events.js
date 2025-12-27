@@ -513,31 +513,28 @@ function setupDraftViewEvents() {
     if (onDraftBack) onDraftBack();
   });
   
-  // Team slot clicks
+  // Team slot clicks (using unified player-row class)
   const teamSlots = document.getElementById('draft-team-slots');
   teamSlots?.addEventListener('click', (e) => {
-    const slot = e.target.closest('.draft-slot');
-    if (!slot) return;
+    const row = e.target.closest('.player-row');
+    if (!row || row.classList.contains('empty')) return;
     
-    const nickname = slot.dataset.nickname;
+    const nickname = row.dataset.nickname;
     if (nickname && onPlayerSelect) {
       onPlayerSelect(nickname);
     }
   });
   
-  // Pool player clicks (delegated to parent containers)
-  const poolContainers = ['draft-pool-tank', 'draft-pool-dps', 'draft-pool-support'];
-  poolContainers.forEach(containerId => {
-    const container = document.getElementById(containerId);
-    container?.addEventListener('click', (e) => {
-      const card = e.target.closest('.pool-player-card');
-      if (!card) return;
-      
-      const nickname = card.dataset.nickname;
-      if (nickname && onPlayerSelect) {
-        onPlayerSelect(nickname);
-      }
-    });
+  // Pool player clicks (single list container)
+  const playerPool = document.getElementById('draft-player-pool');
+  playerPool?.addEventListener('click', (e) => {
+    const row = e.target.closest('.player-row');
+    if (!row) return;
+    
+    const nickname = row.dataset.nickname;
+    if (nickname && onPlayerSelect) {
+      onPlayerSelect(nickname);
+    }
   });
 }
 

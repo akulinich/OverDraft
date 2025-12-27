@@ -235,82 +235,38 @@
           <span id="draft-team-rating" class="draft-team-avg"></span>
         </div>
 
-        <!-- Draft Layout: 3 columns -->
+        <!-- Draft Layout: Team | Players | Details -->
         <div class="draft-layout">
           <!-- Left: Current Team Panel -->
           <div class="draft-panel draft-team-panel">
-            <h3 class="draft-panel-title">Текущая команда</h3>
+            <h3 class="draft-panel-title">Команда</h3>
             <div id="draft-team-slots" class="draft-team-slots">
-              <!-- Tank slot -->
-              <div class="draft-slot" data-role="tank">
-                <span class="slot-role-badge tank">T</span>
-                <span class="slot-player-name">-</span>
-                <span class="slot-player-rating"></span>
-              </div>
-              <!-- DPS slot 1 -->
-              <div class="draft-slot" data-role="dps">
-                <span class="slot-role-badge dps">D</span>
-                <span class="slot-player-name">-</span>
-                <span class="slot-player-rating"></span>
-              </div>
-              <!-- DPS slot 2 -->
-              <div class="draft-slot" data-role="dps">
-                <span class="slot-role-badge dps">D</span>
-                <span class="slot-player-name">-</span>
-                <span class="slot-player-rating"></span>
-              </div>
-              <!-- Support slot 1 -->
-              <div class="draft-slot" data-role="support">
-                <span class="slot-role-badge support">S</span>
-                <span class="slot-player-name">-</span>
-                <span class="slot-player-rating"></span>
-              </div>
-              <!-- Support slot 2 -->
-              <div class="draft-slot" data-role="support">
-                <span class="slot-role-badge support">S</span>
-                <span class="slot-player-name">-</span>
-                <span class="slot-player-rating"></span>
-              </div>
+              <!-- Slots populated by JS -->
             </div>
           </div>
 
-          <!-- Center: Player Description Panel -->
-          <div class="draft-panel draft-player-panel">
-            <h3 class="draft-panel-title">Информация об игроке</h3>
+          <!-- Center: Available Players (wide) -->
+          <div class="draft-panel draft-pool-panel">
+            <div class="draft-pool-header">
+              <h3 class="draft-panel-title">Доступные игроки</h3>
+            </div>
+            <div class="player-pool-table-header">
+              <span class="col-role"></span>
+              <span class="col-name">Имя</span>
+              <span class="col-rating">Рейтинг</span>
+              <span class="col-heroes">Герои</span>
+            </div>
+            <div id="draft-player-pool" class="draft-player-pool">
+              <!-- Player rows populated by JS -->
+            </div>
+          </div>
+
+          <!-- Right: Player Details Panel -->
+          <div class="draft-panel draft-details-panel">
+            <h3 class="draft-panel-title">Детали игрока</h3>
             <div id="draft-player-details" class="draft-player-details">
               <div class="player-details-empty">
                 <p>Выберите игрока для просмотра информации</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Right: Unselected Players Lists -->
-          <div class="draft-panel draft-pool-panel">
-            <h3 class="draft-panel-title">Доступные игроки</h3>
-            <div class="draft-pool-lists">
-              <!-- Tank list -->
-              <div class="draft-pool-column">
-                <div class="pool-column-header tank">
-                  <span class="pool-role-badge tank">T</span>
-                  <span>Танки</span>
-                </div>
-                <div id="draft-pool-tank" class="pool-player-list"></div>
-              </div>
-              <!-- DPS list -->
-              <div class="draft-pool-column">
-                <div class="pool-column-header dps">
-                  <span class="pool-role-badge dps">D</span>
-                  <span>ДД</span>
-                </div>
-                <div id="draft-pool-dps" class="pool-player-list"></div>
-              </div>
-              <!-- Support list -->
-              <div class="draft-pool-column">
-                <div class="pool-column-header support">
-                  <span class="pool-role-badge support">S</span>
-                  <span>Саппорты</span>
-                </div>
-                <div id="draft-pool-support" class="pool-player-list"></div>
               </div>
             </div>
           </div>

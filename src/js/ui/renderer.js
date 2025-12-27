@@ -476,8 +476,77 @@ export function showTeamsNotConfigured() {
 export function renderDraftView(team, unselectedByRole) {
   renderDraftHeader(team);
   renderDraftTeamPanel(team);
-  renderDraftPlayerLists(unselectedByRole);
+  renderDraftPlayerPool(unselectedByRole);
   clearDraftPlayerDescription();
+}
+
+/**
+ * Creates a unified player row element (used in both team panel and player pool)
+ * @param {Player|TeamPlayer} player - Player data
+ * @param {'tank'|'dps'|'support'} role - Player role
+ * @param {Object} [options]
+ * @param {boolean} [options.showRoleBadge=true] - Show role badge
+ * @param {boolean} [options.isTeamSlot=false] - Is this a team slot (vs pool)
+ * @returns {HTMLElement}
+ */
+function createPlayerRow(player, role, options = {}) {
+  const { showRoleBadge = true, isTeamSlot = false } = options;
+  const ratingClass = getRatingClass(String(player.rating));
+  
+  const row = createElement('div', {
+    className: `player-row ${isTeamSlot ? 'team-slot' : 'pool-item'}`,
+    dataset: { nickname: player.nickname, role }
+  });
+  
+  // Role badge (optional)
+  if (showRoleBadge) {
+    const roleBadge = createElement('span', {
+      className: `player-row-role ${role}`
+    }, getRoleBadgeLabel(role));
+    row.appendChild(roleBadge);
+  }
+  
+  // Name
+  const nameEl = createElement('span', { className: 'player-row-name' }, player.nickname);
+  row.appendChild(nameEl);
+  
+  // Rating
+  const ratingEl = createElement('span', {
+    className: `player-row-rating ${ratingClass}`
+  }, String(player.rating));
+  row.appendChild(ratingEl);
+  
+  // Heroes (if available)
+  const heroes = player.heroes || '';
+  const heroesEl = createElement('span', { className: 'player-row-heroes' }, heroes);
+  row.appendChild(heroesEl);
+  
+  return row;
+}
+
+/**
+ * Creates an empty team slot placeholder
+ * @param {'tank'|'dps'|'support'} role
+ * @returns {HTMLElement}
+ */
+function createEmptySlot(role) {
+  const row = createElement('div', {
+    className: 'player-row team-slot empty',
+    dataset: { role }
+  });
+  
+  const roleBadge = createElement('span', {
+    className: `player-row-role ${role}`
+  }, getRoleBadgeLabel(role));
+  row.appendChild(roleBadge);
+  
+  const nameEl = createElement('span', { className: 'player-row-name empty' }, '—');
+  row.appendChild(nameEl);
+  
+  row.appendChild(createElement('span', { className: 'player-row-rating' }, ''));
+  row.appendChild(createElement('span', { className: 'player-row-heroes' }, ''));
+  
+  return row;
 }
 
 /**
@@ -524,50 +593,11 @@ function renderDraftTeamPanel(team) {
   
   expectedSlots.forEach(slot => {
     const player = playersByRole[slot.role][slot.index];
-    const slotEl = createDraftSlot(slot.role, player);
+    const slotEl = player 
+      ? createPlayerRow(player, slot.role, { isTeamSlot: true })
+      : createEmptySlot(slot.role);
     slotsContainer.appendChild(slotEl);
   });
-}
-
-/**
- * Creates a draft slot element
- * @param {'tank'|'dps'|'support'} role
- * @param {TeamPlayer|undefined} player
- * @returns {HTMLElement}
- */
-function createDraftSlot(role, player) {
-  const slotEl = createElement('div', { 
-    className: `draft-slot ${player ? 'filled' : 'empty'}`,
-    dataset: { role }
-  });
-  
-  if (player) {
-    slotEl.dataset.nickname = player.nickname;
-  }
-  
-  // Role badge
-  const roleBadge = createElement('span', { 
-    className: `slot-role-badge ${role}` 
-  }, getRoleBadgeLabel(role));
-  slotEl.appendChild(roleBadge);
-  
-  // Player name
-  const nameEl = createElement('span', { className: 'slot-player-name' }, 
-    player ? player.nickname : '-');
-  slotEl.appendChild(nameEl);
-  
-  // Rating
-  if (player) {
-    const ratingClass = getRatingClass(String(player.rating));
-    const ratingEl = createElement('span', { 
-      className: `slot-player-rating ${ratingClass}` 
-    }, String(player.rating));
-    slotEl.appendChild(ratingEl);
-  } else {
-    slotEl.appendChild(createElement('span', { className: 'slot-player-rating' }, ''));
-  }
-  
-  return slotEl;
 }
 
 /**
@@ -639,61 +669,32 @@ function getRoleLabel(role) {
 }
 
 /**
- * Renders the unselected players lists
+ * Renders the available players pool (single sorted list)
  * @param {{tank: Player[], dps: Player[], support: Player[]}} playersByRole
  */
-function renderDraftPlayerLists(playersByRole) {
-  renderPlayerPoolColumn('draft-pool-tank', playersByRole.tank);
-  renderPlayerPoolColumn('draft-pool-dps', playersByRole.dps);
-  renderPlayerPoolColumn('draft-pool-support', playersByRole.support);
-}
-
-/**
- * Renders a single player pool column
- * @param {string} containerId
- * @param {Player[]} players
- */
-function renderPlayerPoolColumn(containerId, players) {
-  const container = document.getElementById(containerId);
+function renderDraftPlayerPool(playersByRole) {
+  const container = document.getElementById('draft-player-pool');
   if (!container) return;
   
   container.innerHTML = '';
   
-  if (players.length === 0) {
-    container.innerHTML = '<div class="pool-empty">Нет игроков</div>';
+  // Combine all players and sort by rating descending
+  const allPlayers = [
+    ...playersByRole.tank,
+    ...playersByRole.dps,
+    ...playersByRole.support
+  ].sort((a, b) => b.rating - a.rating);
+  
+  if (allPlayers.length === 0) {
+    container.innerHTML = '<div class="pool-empty">Нет доступных игроков</div>';
     return;
   }
   
-  players.forEach(player => {
-    const card = createPoolPlayerCard(player);
-    container.appendChild(card);
+  // Create rows for each player
+  allPlayers.forEach(player => {
+    const row = createPlayerRow(player, player.role, { isTeamSlot: false });
+    container.appendChild(row);
   });
-}
-
-/**
- * Creates a player card for the pool list
- * @param {Player} player
- * @returns {HTMLElement}
- */
-function createPoolPlayerCard(player) {
-  const ratingClass = getRatingClass(String(player.rating));
-  
-  const card = createElement('div', { 
-    className: 'pool-player-card',
-    dataset: { nickname: player.nickname }
-  });
-  
-  // Nickname
-  const nameEl = createElement('span', { className: 'pool-player-name' }, player.nickname);
-  card.appendChild(nameEl);
-  
-  // Rating
-  const ratingEl = createElement('span', { 
-    className: `pool-player-rating ${ratingClass}` 
-  }, String(player.rating));
-  card.appendChild(ratingEl);
-  
-  return card;
 }
 
 /**
@@ -702,22 +703,15 @@ function createPoolPlayerCard(player) {
  */
 export function updateDraftPlayerSelection(nickname) {
   // Clear previous selection
-  document.querySelectorAll('.draft-slot.selected, .pool-player-card.selected').forEach(el => {
+  document.querySelectorAll('.player-row.selected').forEach(el => {
     el.classList.remove('selected');
   });
   
   if (!nickname) return;
   
-  // Highlight in team slots
-  const teamSlot = document.querySelector(`.draft-slot[data-nickname="${CSS.escape(nickname)}"]`);
-  if (teamSlot) {
-    teamSlot.classList.add('selected');
-  }
-  
-  // Highlight in pool lists
-  const poolCard = document.querySelector(`.pool-player-card[data-nickname="${CSS.escape(nickname)}"]`);
-  if (poolCard) {
-    poolCard.classList.add('selected');
-  }
+  // Highlight all rows with this nickname (team slot and/or pool item)
+  document.querySelectorAll(`.player-row[data-nickname="${CSS.escape(nickname)}"]`).forEach(el => {
+    el.classList.add('selected');
+  });
 }
 
