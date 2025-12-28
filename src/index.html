@@ -16,11 +16,40 @@
       <div class="modal-backdrop"></div>
       <div class="modal-content">
         <div id="setup-modal-header" class="modal-header">
-          <h2>Подключить Google Таблицу</h2>
-          <p class="modal-subtitle">Вставьте URL опубликованной таблицы</p>
+          <h2>Подключить данные игроков</h2>
+          <p class="modal-subtitle">Выберите источник данных</p>
         </div>
         <div class="modal-body">
+          <!-- Source Type Toggle -->
           <div class="sheet-config-section">
+            <div class="source-toggle">
+              <label class="source-option">
+                <input type="radio" name="source-type" value="google" checked>
+                <span class="source-label">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="8" y1="13" x2="16" y2="13"/>
+                    <line x1="8" y1="17" x2="16" y2="17"/>
+                  </svg>
+                  Google Sheets
+                </span>
+              </label>
+              <label class="source-option">
+                <input type="radio" name="source-type" value="local">
+                <span class="source-label">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+                    <polyline points="13 2 13 9 20 9"/>
+                  </svg>
+                  Локальный CSV
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Google Sheets URL Input -->
+          <div id="google-source-fields" class="sheet-config-section">
             <div class="input-group">
               <label for="sheet-url" class="section-title">URL таблицы игроков</label>
               <input 
@@ -32,10 +61,34 @@
               <div id="url-feedback" class="feedback"></div>
             </div>
           </div>
-          
-          <div class="sheet-config-section">
+
+          <!-- Local CSV File Input (Players) -->
+          <div id="local-source-fields" class="sheet-config-section" hidden>
             <div class="input-group">
-              <label for="teams-url" class="section-title">URL таблицы команд</label>
+              <label for="local-csv-file" class="section-title">CSV файл с данными игроков</label>
+              <div class="file-input-wrapper">
+                <input 
+                  type="file" 
+                  id="local-csv-file" 
+                  accept=".csv,text/csv"
+                >
+                <div class="file-input-display" id="players-file-display">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  <span id="file-input-label">Выберите файл...</span>
+                </div>
+              </div>
+              <div id="local-csv-feedback" class="feedback"></div>
+            </div>
+          </div>
+          
+          <!-- Teams Sheet (Google Sheets URL) -->
+          <div id="teams-url-section" class="sheet-config-section">
+            <div class="input-group">
+              <label for="teams-url" class="section-title">URL таблицы команд (опционально)</label>
               <input 
                 type="url" 
                 id="teams-url" 
@@ -43,6 +96,29 @@
                 autocomplete="off"
               >
               <div id="teams-url-feedback" class="feedback"></div>
+            </div>
+          </div>
+
+          <!-- Local Teams CSV File Input -->
+          <div id="local-teams-source-fields" class="sheet-config-section" hidden>
+            <div class="input-group">
+              <label for="local-teams-csv-file" class="section-title">CSV файл с данными команд (опционально)</label>
+              <div class="file-input-wrapper">
+                <input 
+                  type="file" 
+                  id="local-teams-csv-file" 
+                  accept=".csv,text/csv"
+                >
+                <div class="file-input-display" id="teams-file-display">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  <span id="teams-file-input-label">Выберите файл...</span>
+                </div>
+              </div>
+              <div id="local-teams-csv-feedback" class="feedback"></div>
             </div>
           </div>
         </div>

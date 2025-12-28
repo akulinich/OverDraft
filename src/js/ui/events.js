@@ -4,9 +4,19 @@
 
 import { parseSheetUrl, validateSheetUrl } from '../utils/parser.js';
 import { fetchSheet, SheetError } from '../api/sheets.js';
+import { loadLocalCSV, getCSVText, encodeCSVForStorage } from '../api/local.js';
 import * as store from '../state/store.js';
 import * as renderer from './renderer.js';
 import { validateTeamsDataWithConfig } from '../validation/schema.js';
+
+/** @type {'google'|'local'} Current source type in setup modal */
+let currentSourceType = 'google';
+
+/** @type {File|null} Selected local CSV file for players */
+let selectedLocalFile = null;
+
+/** @type {File|null} Selected local CSV file for teams */
+let selectedLocalTeamsFile = null;
 
 /** @type {function|null} */
 let onSheetConfigured = null;
@@ -85,6 +95,8 @@ function prefillSetupModal() {
   const teamsFeedback = document.getElementById('teams-url-feedback');
   const confirmBtn = /** @type {HTMLButtonElement} */ (document.getElementById('confirm-sheet'));
   const header = document.getElementById('setup-modal-header');
+  const localCsvFeedback = document.getElementById('local-csv-feedback');
+  const fileLabel = document.getElementById('file-input-label');
   
   // Hide header when editing existing config
   if (header) {
@@ -93,14 +105,33 @@ function prefillSetupModal() {
   
   // Pre-fill players sheet
   const sheet = store.getFirstSheet();
-  if (sheet && urlInput) {
-    urlInput.value = buildSheetUrl(sheet.spreadsheetId, sheet.gid);
-    if (feedback) {
-      feedback.textContent = `✓ URL корректный (gid: ${sheet.gid})`;
-      feedback.className = 'feedback success';
-    }
-    if (confirmBtn) {
-      confirmBtn.disabled = false;
+  if (sheet) {
+    // Set source type based on current config
+    const isLocal = store.isLocalSheet(sheet);
+    currentSourceType = isLocal ? 'local' : 'google';
+    updateSourceTypeUI(currentSourceType);
+    
+    if (isLocal) {
+      // For local files, show filename
+      if (fileLabel) {
+        fileLabel.textContent = sheet.gid; // gid contains filename for local
+      }
+      if (localCsvFeedback) {
+        localCsvFeedback.textContent = '✓ Файл загружен';
+        localCsvFeedback.className = 'feedback success';
+      }
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+      }
+    } else if (urlInput) {
+      urlInput.value = buildSheetUrl(sheet.spreadsheetId, sheet.gid);
+      if (feedback) {
+        feedback.textContent = `✓ URL корректный (gid: ${sheet.gid})`;
+        feedback.className = 'feedback success';
+      }
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+      }
     }
   }
   
@@ -116,13 +147,46 @@ function prefillSetupModal() {
 }
 
 /**
+ * Updates the UI based on selected source type
+ * @param {'google'|'local'} sourceType
+ */
+function updateSourceTypeUI(sourceType) {
+  const googleFields = document.getElementById('google-source-fields');
+  const localFields = document.getElementById('local-source-fields');
+  const teamsUrlSection = document.getElementById('teams-url-section');
+  const localTeamsSection = document.getElementById('local-teams-source-fields');
+  const googleRadio = /** @type {HTMLInputElement} */ (document.querySelector('input[name="source-type"][value="google"]'));
+  const localRadio = /** @type {HTMLInputElement} */ (document.querySelector('input[name="source-type"][value="local"]'));
+  
+  // Toggle players data source fields
+  if (googleFields) googleFields.hidden = sourceType !== 'google';
+  if (localFields) localFields.hidden = sourceType !== 'local';
+  
+  // Toggle teams data source fields
+  if (teamsUrlSection) teamsUrlSection.hidden = sourceType !== 'google';
+  if (localTeamsSection) localTeamsSection.hidden = sourceType !== 'local';
+  
+  // Update radio buttons
+  if (googleRadio) googleRadio.checked = sourceType === 'google';
+  if (localRadio) localRadio.checked = sourceType === 'local';
+}
+
+/**
  * Resets setup modal to initial state (for first-time setup)
  */
 function resetSetupModal() {
   const urlInput = /** @type {HTMLInputElement} */ (document.getElementById('sheet-url'));
   const teamsUrlInput = /** @type {HTMLInputElement} */ (document.getElementById('teams-url'));
+  const localFileInput = /** @type {HTMLInputElement} */ (document.getElementById('local-csv-file'));
+  const localTeamsFileInput = /** @type {HTMLInputElement} */ (document.getElementById('local-teams-csv-file'));
   const feedback = document.getElementById('url-feedback');
   const teamsFeedback = document.getElementById('teams-url-feedback');
+  const localCsvFeedback = document.getElementById('local-csv-feedback');
+  const localTeamsCsvFeedback = document.getElementById('local-teams-csv-feedback');
+  const fileLabel = document.getElementById('file-input-label');
+  const teamsFileLabel = document.getElementById('teams-file-input-label');
+  const playersFileDisplay = document.getElementById('players-file-display');
+  const teamsFileDisplay = document.getElementById('teams-file-display');
   const confirmBtn = /** @type {HTMLButtonElement} */ (document.getElementById('confirm-sheet'));
   const header = document.getElementById('setup-modal-header');
   
@@ -131,9 +195,21 @@ function resetSetupModal() {
     header.hidden = false;
   }
   
+  // Reset source type to Google
+  currentSourceType = 'google';
+  selectedLocalFile = null;
+  selectedLocalTeamsFile = null;
+  updateSourceTypeUI('google');
+  
   // Clear all inputs
   if (urlInput) urlInput.value = '';
   if (teamsUrlInput) teamsUrlInput.value = '';
+  if (localFileInput) localFileInput.value = '';
+  if (localTeamsFileInput) localTeamsFileInput.value = '';
+  if (fileLabel) fileLabel.textContent = 'Выберите файл...';
+  if (teamsFileLabel) teamsFileLabel.textContent = 'Выберите файл...';
+  if (playersFileDisplay) playersFileDisplay.classList.remove('has-file');
+  if (teamsFileDisplay) teamsFileDisplay.classList.remove('has-file');
   
   if (feedback) {
     feedback.textContent = '';
@@ -142,6 +218,14 @@ function resetSetupModal() {
   if (teamsFeedback) {
     teamsFeedback.textContent = '';
     teamsFeedback.className = 'feedback';
+  }
+  if (localCsvFeedback) {
+    localCsvFeedback.textContent = '';
+    localCsvFeedback.className = 'feedback';
+  }
+  if (localTeamsCsvFeedback) {
+    localTeamsCsvFeedback.textContent = '';
+    localTeamsCsvFeedback.className = 'feedback';
   }
   if (confirmBtn) {
     confirmBtn.disabled = true;
@@ -205,18 +289,147 @@ function validateUrlInput(urlInput, feedback) {
 }
 
 /**
- * Updates confirm button state based on both URL inputs
+ * Updates confirm button state based on source type and inputs
  */
 function updateConfirmButtonState() {
   const urlInput = /** @type {HTMLInputElement} */ (document.getElementById('sheet-url'));
   const urlFeedback = document.getElementById('url-feedback');
+  const localCsvFeedback = document.getElementById('local-csv-feedback');
   const confirmBtn = /** @type {HTMLButtonElement} */ (document.getElementById('confirm-sheet'));
   
-  if (!urlInput || !confirmBtn) return;
+  if (!confirmBtn) return;
   
-  // Main sheet URL is required
-  const isMainUrlValid = urlInput.value.trim() && urlFeedback?.classList.contains('success');
-  confirmBtn.disabled = !isMainUrlValid;
+  if (currentSourceType === 'google') {
+    // Google Sheets: URL is required
+    const isMainUrlValid = urlInput?.value.trim() && urlFeedback?.classList.contains('success');
+    confirmBtn.disabled = !isMainUrlValid;
+  } else {
+    // Local CSV: file must be selected and valid
+    const isFileValid = selectedLocalFile !== null && localCsvFeedback?.classList.contains('success');
+    confirmBtn.disabled = !isFileValid;
+  }
+}
+
+/**
+ * Sets up source type toggle
+ */
+function setupSourceTypeToggle() {
+  const sourceRadios = document.querySelectorAll('input[name="source-type"]');
+  
+  sourceRadios.forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      const target = /** @type {HTMLInputElement} */ (e.target);
+      currentSourceType = /** @type {'google'|'local'} */ (target.value);
+      updateSourceTypeUI(currentSourceType);
+      updateConfirmButtonState();
+    });
+  });
+}
+
+/**
+ * Sets up local file input handling
+ */
+function setupLocalFileInput() {
+  // Players CSV file input
+  const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('local-csv-file'));
+  const fileLabel = document.getElementById('file-input-label');
+  const playersFileDisplay = document.getElementById('players-file-display');
+  const feedback = document.getElementById('local-csv-feedback');
+  
+  if (fileInput) {
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      
+      if (!file) {
+        selectedLocalFile = null;
+        if (fileLabel) fileLabel.textContent = 'Выберите файл...';
+        if (playersFileDisplay) playersFileDisplay.classList.remove('has-file');
+        if (feedback) {
+          feedback.textContent = '';
+          feedback.className = 'feedback';
+        }
+        updateConfirmButtonState();
+        return;
+      }
+      
+      // Update display
+      if (fileLabel) fileLabel.textContent = file.name;
+      
+      // Validate CSV
+      try {
+        const data = await loadLocalCSV(file);
+        
+        if (data.data.length === 0) {
+          throw new Error('Файл не содержит данных');
+        }
+        
+        selectedLocalFile = file;
+        if (playersFileDisplay) playersFileDisplay.classList.add('has-file');
+        if (feedback) {
+          feedback.textContent = `✓ ${data.headers.length} колонок, ${data.data.length} строк`;
+          feedback.className = 'feedback success';
+        }
+      } catch (err) {
+        selectedLocalFile = null;
+        if (playersFileDisplay) playersFileDisplay.classList.remove('has-file');
+        if (feedback) {
+          feedback.textContent = err.message || 'Ошибка чтения файла';
+          feedback.className = 'feedback error';
+        }
+      }
+      
+      updateConfirmButtonState();
+    });
+  }
+  
+  // Teams CSV file input
+  const teamsFileInput = /** @type {HTMLInputElement} */ (document.getElementById('local-teams-csv-file'));
+  const teamsFileLabel = document.getElementById('teams-file-input-label');
+  const teamsFileDisplay = document.getElementById('teams-file-display');
+  const teamsFeedback = document.getElementById('local-teams-csv-feedback');
+  
+  if (teamsFileInput) {
+    teamsFileInput.addEventListener('change', async () => {
+      const file = teamsFileInput.files?.[0];
+      
+      if (!file) {
+        selectedLocalTeamsFile = null;
+        if (teamsFileLabel) teamsFileLabel.textContent = 'Выберите файл...';
+        if (teamsFileDisplay) teamsFileDisplay.classList.remove('has-file');
+        if (teamsFeedback) {
+          teamsFeedback.textContent = '';
+          teamsFeedback.className = 'feedback';
+        }
+        return;
+      }
+      
+      // Update display
+      if (teamsFileLabel) teamsFileLabel.textContent = file.name;
+      
+      // Validate CSV
+      try {
+        const data = await loadLocalCSV(file);
+        
+        if (data.data.length === 0) {
+          throw new Error('Файл не содержит данных');
+        }
+        
+        selectedLocalTeamsFile = file;
+        if (teamsFileDisplay) teamsFileDisplay.classList.add('has-file');
+        if (teamsFeedback) {
+          teamsFeedback.textContent = `✓ ${data.headers.length} колонок, ${data.data.length} строк`;
+          teamsFeedback.className = 'feedback success';
+        }
+      } catch (err) {
+        selectedLocalTeamsFile = null;
+        if (teamsFileDisplay) teamsFileDisplay.classList.remove('has-file');
+        if (teamsFeedback) {
+          teamsFeedback.textContent = err.message || 'Ошибка чтения файла';
+          teamsFeedback.className = 'feedback error';
+        }
+      }
+    });
+  }
 }
 
 /**
@@ -248,6 +461,10 @@ function setupUrlValidation() {
       validateUrlInput(teamsUrlInput, teamsFeedback);
     });
   }
+  
+  // Setup source type toggle and file input
+  setupSourceTypeToggle();
+  setupLocalFileInput();
 }
 
 /**
@@ -286,22 +503,22 @@ function setupSheetForm() {
   const confirmBtn = document.getElementById('confirm-sheet');
   const urlInput = /** @type {HTMLInputElement} */ (document.getElementById('sheet-url'));
   const teamsUrlInput = /** @type {HTMLInputElement} */ (document.getElementById('teams-url'));
+  const localFileInput = /** @type {HTMLInputElement} */ (document.getElementById('local-csv-file'));
+  const localTeamsFileInput = /** @type {HTMLInputElement} */ (document.getElementById('local-teams-csv-file'));
   const feedback = document.getElementById('url-feedback');
   const teamsFeedback = document.getElementById('teams-url-feedback');
+  const localCsvFeedback = document.getElementById('local-csv-feedback');
+  const localTeamsCsvFeedback = document.getElementById('local-teams-csv-feedback');
+  const fileLabel = document.getElementById('file-input-label');
+  const teamsFileLabel = document.getElementById('teams-file-input-label');
+  const playersFileDisplay = document.getElementById('players-file-display');
+  const teamsFileDisplay = document.getElementById('teams-file-display');
   const btnText = confirmBtn?.querySelector('.btn-text');
   const btnLoader = confirmBtn?.querySelector('.btn-loader');
   
-  if (!confirmBtn || !urlInput) return;
+  if (!confirmBtn) return;
   
   confirmBtn.addEventListener('click', async () => {
-    const url = urlInput.value.trim();
-    const teamsUrl = teamsUrlInput?.value.trim();
-    
-    const parsed = parseSheetUrl(url);
-    if (!parsed) return;
-    
-    const teamsParsed = teamsUrl ? parseSheetUrl(teamsUrl) : null;
-    
     // Clear previous errors
     clearSetupError();
     
@@ -310,42 +527,126 @@ function setupSheetForm() {
     if (btnLoader) /** @type {HTMLElement} */ (btnLoader).hidden = false;
     confirmBtn.setAttribute('disabled', 'true');
     
-    // Try to fetch the sheet to validate access
     try {
-      await fetchSheet(parsed.spreadsheetId, parsed.gid);
-      
-      // Validate teams sheet if provided
-      if (teamsParsed) {
-        try {
-          await fetchSheet(teamsParsed.spreadsheetId, teamsParsed.gid);
-          store.setTeamsSheet(teamsParsed);
-        } catch (teamsErr) {
-          console.warn('[Setup] Teams sheet validation failed:', teamsErr);
-          // Don't block main sheet setup, just warn
-          if (teamsFeedback) {
-            teamsFeedback.textContent = 'Не удалось подключить таблицу команд';
-            teamsFeedback.className = 'feedback error';
+      if (currentSourceType === 'local') {
+        // Handle local CSV file for players
+        if (!selectedLocalFile) {
+          throw new Error('Файл игроков не выбран');
+        }
+        
+        // Read and store players CSV data
+        const csvText = await getCSVText(selectedLocalFile);
+        const base64Data = encodeCSVForStorage(csvText);
+        
+        // Save to localStorage
+        store.setLocalCSVData(selectedLocalFile.name, base64Data);
+        
+        // Configure players sheet with local source
+        /** @type {import('../storage/persistence.js').SheetConfig} */
+        const localConfig = {
+          sourceType: 'local',
+          spreadsheetId: 'local',
+          gid: selectedLocalFile.name,
+          addedAt: new Date().toISOString()
+        };
+        
+        if (store.hasConfiguredSheets()) {
+          store.replaceSheet(localConfig);
+        } else {
+          store.addSheet(localConfig);
+        }
+        
+        // Handle local CSV file for teams (optional)
+        if (selectedLocalTeamsFile) {
+          const teamsCsvText = await getCSVText(selectedLocalTeamsFile);
+          const teamsBase64Data = encodeCSVForStorage(teamsCsvText);
+          
+          // Save teams data to localStorage
+          store.setLocalCSVData(selectedLocalTeamsFile.name, teamsBase64Data);
+          
+          // Configure teams sheet with local source
+          /** @type {import('../storage/persistence.js').SheetConfig} */
+          const localTeamsConfig = {
+            sourceType: 'local',
+            spreadsheetId: 'local',
+            gid: selectedLocalTeamsFile.name,
+            addedAt: new Date().toISOString()
+          };
+          
+          store.setTeamsSheet(localTeamsConfig);
+        }
+        
+        // Clear inputs
+        if (localFileInput) localFileInput.value = '';
+        if (localTeamsFileInput) localTeamsFileInput.value = '';
+        if (fileLabel) fileLabel.textContent = 'Выберите файл...';
+        if (teamsFileLabel) teamsFileLabel.textContent = 'Выберите файл...';
+        if (playersFileDisplay) playersFileDisplay.classList.remove('has-file');
+        if (teamsFileDisplay) teamsFileDisplay.classList.remove('has-file');
+        if (localCsvFeedback) {
+          localCsvFeedback.textContent = '';
+          localCsvFeedback.className = 'feedback';
+        }
+        if (localTeamsCsvFeedback) {
+          localTeamsCsvFeedback.textContent = '';
+          localTeamsCsvFeedback.className = 'feedback';
+        }
+        selectedLocalFile = null;
+        selectedLocalTeamsFile = null;
+        
+      } else {
+        // Handle Google Sheets URL
+        const url = urlInput?.value.trim();
+        const teamsUrl = teamsUrlInput?.value.trim();
+        
+        const parsed = parseSheetUrl(url || '');
+        if (!parsed) return;
+        
+        const teamsParsed = teamsUrl ? parseSheetUrl(teamsUrl) : null;
+        
+        // Try to fetch the sheet to validate access
+        await fetchSheet(parsed.spreadsheetId, parsed.gid);
+        
+        // Validate teams sheet if provided
+        if (teamsParsed) {
+          try {
+            await fetchSheet(teamsParsed.spreadsheetId, teamsParsed.gid);
+            store.setTeamsSheet({ ...teamsParsed, sourceType: 'google' });
+          } catch (teamsErr) {
+            console.warn('[Setup] Teams sheet validation failed:', teamsErr);
+            if (teamsFeedback) {
+              teamsFeedback.textContent = 'Не удалось подключить таблицу команд';
+              teamsFeedback.className = 'feedback error';
+            }
           }
         }
-      }
-      
-      // Success - configure main sheet
-      if (store.hasConfiguredSheets()) {
-        store.replaceSheet(parsed);
-      } else {
-        store.addSheet(parsed);
-      }
-      
-      // Clear inputs
-      urlInput.value = '';
-      if (teamsUrlInput) teamsUrlInput.value = '';
-      if (feedback) {
-        feedback.textContent = '';
-        feedback.className = 'feedback';
-      }
-      if (teamsFeedback) {
-        teamsFeedback.textContent = '';
-        teamsFeedback.className = 'feedback';
+        
+        // Configure main sheet with google source
+        /** @type {import('../storage/persistence.js').SheetConfig} */
+        const googleConfig = {
+          sourceType: 'google',
+          spreadsheetId: parsed.spreadsheetId,
+          gid: parsed.gid,
+          addedAt: new Date().toISOString()
+        };
+        
+        if (store.hasConfiguredSheets()) {
+          store.replaceSheet(googleConfig);
+        } else {
+          store.addSheet(googleConfig);
+        }
+        
+        // Clear inputs
+        if (urlInput) urlInput.value = '';
+        if (teamsUrlInput) teamsUrlInput.value = '';
+        if (feedback) {
+          feedback.textContent = '';
+          feedback.className = 'feedback';
+        }
+        if (teamsFeedback) {
+          teamsFeedback.textContent = '';
+          teamsFeedback.className = 'feedback';
+        }
       }
       
       // Hide modal
@@ -360,18 +661,21 @@ function setupSheetForm() {
     } catch (err) {
       console.error('[Setup] Validation error:', err);
       
-      // Network errors are almost always caused by unpublished sheets (CORS blocked by Google)
-      // TypeError is thrown by fetch() when CORS blocks the response
-      const isLikelyNotPublished = 
-        (err instanceof SheetError && (err.type === 'NOT_PUBLISHED' || err.type === 'NETWORK')) ||
-        err.name === 'TypeError';
-      
-      if (isLikelyNotPublished) {
-        showSetupError('Не удалось подключиться. Вероятно, таблица не опубликована.', true);
-      } else if (err instanceof SheetError && err.type === 'NOT_FOUND') {
-        showSetupError('Таблица не найдена. Проверьте URL.', false);
+      if (currentSourceType === 'local') {
+        showSetupError(err.message || 'Ошибка загрузки файла', false);
       } else {
-        showSetupError('Не удалось подключиться к таблице.', false);
+        // Network errors are almost always caused by unpublished sheets
+        const isLikelyNotPublished = 
+          (err instanceof SheetError && (err.type === 'NOT_PUBLISHED' || err.type === 'NETWORK')) ||
+          err.name === 'TypeError';
+        
+        if (isLikelyNotPublished) {
+          showSetupError('Не удалось подключиться. Вероятно, таблица не опубликована.', true);
+        } else if (err instanceof SheetError && err.type === 'NOT_FOUND') {
+          showSetupError('Таблица не найдена. Проверьте URL.', false);
+        } else {
+          showSetupError('Не удалось подключиться к таблице.', false);
+        }
       }
     } finally {
       // Reset button

@@ -4,6 +4,7 @@
  */
 
 import { config } from '../config.js';
+import { parseCSV } from '../utils/csv.js';
 
 /**
  * @typedef {Object} SheetData
@@ -31,66 +32,6 @@ export class SheetError extends Error {
     this.sheetId = sheetId;
     this.gid = gid;
   }
-}
-
-/**
- * Parses CSV text into 2D array
- * Handles quoted fields with commas and newlines
- * @param {string} csv - Raw CSV text
- * @returns {string[][]}
- */
-function parseCSV(csv) {
-  const rows = [];
-  let currentRow = [];
-  let currentField = '';
-  let inQuotes = false;
-  
-  for (let i = 0; i < csv.length; i++) {
-    const char = csv[i];
-    const nextChar = csv[i + 1];
-    
-    if (inQuotes) {
-      if (char === '"') {
-        if (nextChar === '"') {
-          // Escaped quote
-          currentField += '"';
-          i++; // Skip next quote
-        } else {
-          // End of quoted field
-          inQuotes = false;
-        }
-      } else {
-        currentField += char;
-      }
-    } else {
-      if (char === '"') {
-        inQuotes = true;
-      } else if (char === ',') {
-        currentRow.push(currentField.trim());
-        currentField = '';
-      } else if (char === '\r') {
-        // Skip carriage return
-      } else if (char === '\n') {
-        currentRow.push(currentField.trim());
-        // Keep all rows including empty ones to preserve row indices
-        if (currentRow.length > 0) {
-          rows.push(currentRow);
-        }
-        currentRow = [];
-        currentField = '';
-      } else {
-        currentField += char;
-      }
-    }
-  }
-  
-  // Don't forget the last field/row
-  if (currentField || currentRow.length > 0) {
-    currentRow.push(currentField.trim());
-    rows.push(currentRow);
-  }
-  
-  return rows;
 }
 
 /**

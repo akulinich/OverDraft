@@ -2,7 +2,7 @@
  * In-memory state management
  */
 
-import { loadConfiguredSheets, loadSettings, loadTeamsSheet, saveConfiguredSheets, saveSettings, saveTeamsSheet, loadColumnMapping, saveColumnMapping } from '../storage/persistence.js';
+import { loadConfiguredSheets, loadSettings, loadTeamsSheet, saveConfiguredSheets, saveSettings, saveTeamsSheet, loadColumnMapping, saveColumnMapping, loadLocalCSVData, saveLocalCSVData, removeLocalCSVData } from '../storage/persistence.js';
 import { getSheetKey } from '../utils/parser.js';
 
 /**
@@ -609,6 +609,41 @@ export function hasConfiguredSheets() {
  */
 export function getFirstSheet() {
   return state.configuredSheets[0];
+}
+
+/**
+ * Checks if a sheet config is for a local file
+ * @param {SheetConfig} config
+ * @returns {boolean}
+ */
+export function isLocalSheet(config) {
+  return config?.sourceType === 'local';
+}
+
+/**
+ * Gets stored local CSV data
+ * @param {string} fileName
+ * @returns {string|null} Base64-encoded CSV or null
+ */
+export function getLocalCSVData(fileName) {
+  return loadLocalCSVData(fileName);
+}
+
+/**
+ * Saves local CSV data to storage
+ * @param {string} fileName
+ * @param {string} base64Data
+ */
+export function setLocalCSVData(fileName, base64Data) {
+  saveLocalCSVData(fileName, base64Data);
+}
+
+/**
+ * Removes local CSV data from storage
+ * @param {string} fileName
+ */
+export function deleteLocalCSVData(fileName) {
+  removeLocalCSVData(fileName);
 }
 
 /**

@@ -7,16 +7,18 @@ const STORAGE_KEYS = {
   TEAMS_SHEET: 'overdraft_teams_sheet',
   SETTINGS: 'overdraft_settings',
   COLUMN_MAPPINGS: 'overdraft_column_mappings',
-  TEAMS_LAYOUT: 'overdraft_teams_layout'
+  TEAMS_LAYOUT: 'overdraft_teams_layout',
+  LOCAL_CSV_DATA: 'overdraft_local_csv_data'
 };
 
 const CURRENT_VERSION = 1;
 
 /**
  * @typedef {Object} SheetConfig
- * @property {string} spreadsheetId
- * @property {string} gid
- * @property {string} [alias]
+ * @property {'google'|'local'} sourceType - Data source type (defaults to 'google' for backwards compatibility)
+ * @property {string} spreadsheetId - For google: spreadsheet ID, for local: 'local'
+ * @property {string} gid - For google: sheet tab ID, for local: file name
+ * @property {string} [alias] - User-defined name
  * @property {string} addedAt - ISO date string
  */
 
@@ -288,6 +290,55 @@ export function removeTeamsLayoutConfig(sheetKey) {
 }
 
 /**
+ * @typedef {Object} StoredLocalCSV
+ * @property {number} version
+ * @property {Object<string, string>} files - Keyed by filename, value is base64-encoded CSV
+ */
+
+/**
+ * Gets default local CSV storage
+ * @returns {StoredLocalCSV}
+ */
+function getDefaultLocalCSV() {
+  return {
+    version: CURRENT_VERSION,
+    files: {}
+  };
+}
+
+/**
+ * Saves local CSV data to localStorage
+ * @param {string} fileName - File name (used as key)
+ * @param {string} base64Data - Base64-encoded CSV content
+ */
+export function saveLocalCSVData(fileName, base64Data) {
+  const stored = safeLoad(STORAGE_KEYS.LOCAL_CSV_DATA, getDefaultLocalCSV);
+  stored.files[fileName] = base64Data;
+  stored.version = CURRENT_VERSION;
+  safeSave(STORAGE_KEYS.LOCAL_CSV_DATA, stored);
+}
+
+/**
+ * Loads local CSV data from localStorage
+ * @param {string} fileName - File name (key)
+ * @returns {string|null} Base64-encoded CSV content or null if not found
+ */
+export function loadLocalCSVData(fileName) {
+  const stored = safeLoad(STORAGE_KEYS.LOCAL_CSV_DATA, getDefaultLocalCSV);
+  return stored.files?.[fileName] || null;
+}
+
+/**
+ * Removes local CSV data from localStorage
+ * @param {string} fileName - File name (key)
+ */
+export function removeLocalCSVData(fileName) {
+  const stored = safeLoad(STORAGE_KEYS.LOCAL_CSV_DATA, getDefaultLocalCSV);
+  delete stored.files[fileName];
+  safeSave(STORAGE_KEYS.LOCAL_CSV_DATA, stored);
+}
+
+/**
  * Clears all stored data
  */
 export function clearAll() {
@@ -296,6 +347,7 @@ export function clearAll() {
   localStorage.removeItem(STORAGE_KEYS.SETTINGS);
   localStorage.removeItem(STORAGE_KEYS.COLUMN_MAPPINGS);
   localStorage.removeItem(STORAGE_KEYS.TEAMS_LAYOUT);
+  localStorage.removeItem(STORAGE_KEYS.LOCAL_CSV_DATA);
 }
 
 

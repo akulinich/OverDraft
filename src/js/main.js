@@ -4,6 +4,7 @@
 
 import { config } from './config.js';
 import { fetchSheet, SheetError } from './api/sheets.js';
+import { parseStoredCSV, decodeCSVFromStorage } from './api/local.js';
 import { initOverFastData } from './api/overfast.js';
 import * as store from './state/store.js';
 import * as renderer from './ui/renderer.js';
@@ -40,6 +41,27 @@ let isTeamsLayoutPending = false;
 let pendingTeamsData = null;
 
 /**
+ * Loads local CSV data from localStorage
+ * @param {import('./storage/persistence.js').SheetConfig} sheet
+ * @returns {import('./api/sheets.js').SheetData|null}
+ */
+function loadLocalSheetData(sheet) {
+  const base64Data = store.getLocalCSVData(sheet.gid); // gid contains filename for local
+  if (!base64Data) {
+    console.error('[App] Local CSV data not found for:', sheet.gid);
+    return null;
+  }
+  
+  try {
+    const csvText = decodeCSVFromStorage(base64Data);
+    return parseStoredCSV(csvText, sheet.gid);
+  } catch (err) {
+    console.error('[App] Failed to parse stored CSV:', err);
+    return null;
+  }
+}
+
+/**
  * Fetches and renders players sheet data
  * @param {boolean} [skipColumnValidation=false] - Skip column validation (used after mapping confirmed)
  */
@@ -51,7 +73,20 @@ async function fetchAndRenderPlayers(skipColumnValidation = false) {
   if (isColumnMappingPending) return;
   
   try {
-    const data = await fetchSheet(sheet.spreadsheetId, sheet.gid);
+    let data;
+    
+    // Handle local vs Google Sheets source
+    if (store.isLocalSheet(sheet)) {
+      // Load from localStorage
+      data = loadLocalSheetData(sheet);
+      if (!data) {
+        throw new Error('Локальные данные не найдены. Загрузите файл заново.');
+      }
+    } else {
+      // Fetch from Google Sheets
+      data = await fetchSheet(sheet.spreadsheetId, sheet.gid);
+    }
+    
     const sheetKey = getSheetKey(sheet.spreadsheetId, sheet.gid);
     
     // Check if column mapping is needed (only on first load or when not skipped)
@@ -87,7 +122,7 @@ async function fetchAndRenderPlayers(skipColumnValidation = false) {
       renderPlayersPanel(data.headers, data.data, teams);
       renderer.showDataDisplay();
     }
-    renderer.updateStatusBar(data.lastUpdated, true);
+    renderer.updateStatusBar(data.lastUpdated, !store.isLocalSheet(sheet));
     renderer.showStatusError(null);
     
   } catch (err) {
@@ -103,7 +138,7 @@ async function fetchAndRenderPlayers(skipColumnValidation = false) {
     } else {
       const message = isLikelyNotPublished 
         ? 'Не удалось подключиться. Вероятно, таблица не опубликована.'
-        : (err instanceof SheetError ? getErrorMessage(err) : 'Не удалось загрузить данные');
+        : (err instanceof SheetError ? getErrorMessage(err) : err.message || 'Не удалось загрузить данные');
       renderer.showError(message, isLikelyNotPublished);
     }
     
@@ -187,6 +222,27 @@ function renderPlayersPanel(headers, data, teams) {
 }
 
 /**
+ * Loads local teams CSV data from localStorage
+ * @param {import('./storage/persistence.js').SheetConfig} teamsSheet
+ * @returns {import('./api/sheets.js').SheetData|null}
+ */
+function loadLocalTeamsSheetData(teamsSheet) {
+  const base64Data = store.getLocalCSVData(teamsSheet.gid); // gid contains filename for local
+  if (!base64Data) {
+    console.error('[App] Local teams CSV data not found for:', teamsSheet.gid);
+    return null;
+  }
+  
+  try {
+    const csvText = decodeCSVFromStorage(base64Data);
+    return parseStoredCSV(csvText, teamsSheet.gid);
+  } catch (err) {
+    console.error('[App] Failed to parse stored teams CSV:', err);
+    return null;
+  }
+}
+
+/**
  * Fetches and renders teams sheet data
  * @param {boolean} [skipLayoutValidation=false] - Skip layout validation (used after config confirmed)
  */
@@ -203,7 +259,20 @@ async function fetchAndRenderTeams(skipLayoutValidation = false) {
   if (isTeamsLayoutPending) return;
   
   try {
-    const data = await fetchSheet(teamsSheet.spreadsheetId, teamsSheet.gid);
+    let data;
+    
+    // Handle local vs Google Sheets source
+    if (store.isLocalSheet(teamsSheet)) {
+      // Load from localStorage
+      data = loadLocalTeamsSheetData(teamsSheet);
+      if (!data) {
+        throw new Error('Локальные данные команд не найдены. Загрузите файл заново.');
+      }
+    } else {
+      // Fetch from Google Sheets
+      data = await fetchSheet(teamsSheet.spreadsheetId, teamsSheet.gid);
+    }
+    
     const sheetKey = getSheetKey(teamsSheet.spreadsheetId, teamsSheet.gid);
     
     // Load saved config or use defaults
@@ -340,9 +409,30 @@ function getErrorMessage(err) {
 /**
  * Starts polling for data updates
  */
+/**
+ * Checks if polling should be enabled for the current configuration
+ * @returns {boolean}
+ */
+function shouldEnablePolling() {
+  const sheet = store.getFirstSheet();
+  // Don't poll for local files - they don't change
+  if (sheet && store.isLocalSheet(sheet)) {
+    return false;
+  }
+  return true;
+}
+
 function startPolling() {
   if (pollingManager) {
     pollingManager.stop();
+  }
+  
+  // Skip polling for local sources
+  if (!shouldEnablePolling()) {
+    if (config.isDev) {
+      console.log('[App] Polling disabled for local source');
+    }
+    return;
   }
   
   pollingManager = createPollingManager(fetchAndRender, store.getState().pollingInterval);
@@ -555,7 +645,21 @@ async function onConfigureTeamsLayout() {
   if (!teamsSheet) return;
   
   try {
-    const data = await fetchSheet(teamsSheet.spreadsheetId, teamsSheet.gid);
+    let data;
+    
+    // Handle local vs Google Sheets source
+    if (store.isLocalSheet(teamsSheet)) {
+      // Load from localStorage
+      data = loadLocalTeamsSheetData(teamsSheet);
+      if (!data) {
+        console.error('[App] Local teams data not found');
+        return;
+      }
+    } else {
+      // Fetch from Google Sheets
+      data = await fetchSheet(teamsSheet.spreadsheetId, teamsSheet.gid);
+    }
+    
     const sheetKey = getSheetKey(teamsSheet.spreadsheetId, teamsSheet.gid);
     const allRows = [data.headers, ...data.data];
     
