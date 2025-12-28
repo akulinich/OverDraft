@@ -39,7 +39,8 @@ function detectBrowserLanguage() {
  */
 async function loadTranslations(lang) {
   try {
-    const response = await fetch(`./locales/${lang}.json`);
+    const basePath = import.meta.env.BASE_URL || './';
+    const response = await fetch(`${basePath}locales/${lang}.json`);
     if (!response.ok) {
       throw new Error(`Failed to load ${lang}.json: ${response.status}`);
     }
