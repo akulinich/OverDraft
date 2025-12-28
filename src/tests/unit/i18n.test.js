@@ -196,12 +196,16 @@ describe('i18n module', () => {
 
     it('returns key when translation is missing', async () => {
       mockStorage['overdraft_language'] = 'en';
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       const { init, t } = await import('../../js/i18n/index.js');
       await init();
 
       expect(t('nonexistent.key')).toBe('nonexistent.key');
       expect(t('deeply.nested.missing.key')).toBe('deeply.nested.missing.key');
+      
+      expect(warnSpy).toHaveBeenCalledTimes(2);
+      warnSpy.mockRestore();
     });
 
     it('keeps unmatched placeholders when params missing', async () => {
@@ -243,6 +247,7 @@ describe('i18n module', () => {
 
     it('rejects invalid languages', async () => {
       mockStorage['overdraft_language'] = 'ru';
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       const { init, setLanguage, getLanguage } = await import('../../js/i18n/index.js');
       await init();
@@ -250,6 +255,8 @@ describe('i18n module', () => {
       await setLanguage('de');
 
       expect(getLanguage()).toBe('ru'); // unchanged
+      expect(errorSpy).toHaveBeenCalledWith('[i18n] Invalid language: de');
+      errorSpy.mockRestore();
     });
 
     it('does nothing when setting same language', async () => {
