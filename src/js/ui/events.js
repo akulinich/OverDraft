@@ -9,6 +9,7 @@ import * as store from '../state/store.js';
 import * as renderer from './renderer.js';
 import { validateTeamsDataWithConfig } from '../validation/schema.js';
 import { exportConfiguration, isExportAvailable } from '../utils/export.js';
+import { t, toggleLanguage, getLanguage, subscribe as subscribeToLanguage } from '../i18n/index.js';
 
 /** @type {'google'|'local'} Current source type in setup modal */
 let currentSourceType = 'google';
@@ -118,7 +119,7 @@ function prefillSetupModal() {
         fileLabel.textContent = sheet.gid; // gid contains filename for local
       }
       if (localCsvFeedback) {
-        localCsvFeedback.textContent = '✓ Файл загружен';
+        localCsvFeedback.textContent = t('validation.fileLoaded');
         localCsvFeedback.className = 'feedback success';
       }
       if (confirmBtn) {
@@ -127,7 +128,7 @@ function prefillSetupModal() {
     } else if (urlInput) {
       urlInput.value = buildSheetUrl(sheet.spreadsheetId, sheet.gid);
       if (feedback) {
-        feedback.textContent = `✓ URL корректный (gid: ${sheet.gid})`;
+        feedback.textContent = t('validation.urlValid', { gid: sheet.gid });
         feedback.className = 'feedback success';
       }
       if (confirmBtn) {
@@ -141,7 +142,7 @@ function prefillSetupModal() {
   if (teamsSheet && teamsUrlInput) {
     teamsUrlInput.value = buildSheetUrl(teamsSheet.spreadsheetId, teamsSheet.gid);
     if (teamsFeedback) {
-      teamsFeedback.textContent = `✓ URL корректный (gid: ${teamsSheet.gid})`;
+      teamsFeedback.textContent = t('validation.urlValid', { gid: teamsSheet.gid });
       teamsFeedback.className = 'feedback success';
     }
   }
@@ -207,8 +208,8 @@ function resetSetupModal() {
   if (teamsUrlInput) teamsUrlInput.value = '';
   if (localFileInput) localFileInput.value = '';
   if (localTeamsFileInput) localTeamsFileInput.value = '';
-  if (fileLabel) fileLabel.textContent = 'Выберите файл...';
-  if (teamsFileLabel) teamsFileLabel.textContent = 'Выберите файл...';
+  if (fileLabel) fileLabel.textContent = t('setup.selectFile');
+  if (teamsFileLabel) teamsFileLabel.textContent = t('setup.selectFile');
   if (playersFileDisplay) playersFileDisplay.classList.remove('has-file');
   if (teamsFileDisplay) teamsFileDisplay.classList.remove('has-file');
   
@@ -243,20 +244,20 @@ export function hideModal(modalId) {
 }
 
 /**
- * Gets Russian error message for URL validation
+ * Gets localized error message for URL validation
  * @param {string} [error]
  * @returns {string}
  */
 function getUrlValidationError(error) {
   switch (error) {
     case 'URL is required':
-      return 'Введите URL';
+      return t('validation.urlRequired');
     case 'Not a Google Sheets URL':
-      return 'Это не ссылка на Google Таблицу';
+      return t('validation.notGoogleUrl');
     case 'Could not parse spreadsheet ID':
-      return 'Не удалось определить ID таблицы';
+      return t('validation.parseError');
     default:
-      return error || 'Некорректный URL';
+      return error || t('validation.invalidUrl');
   }
 }
 
@@ -279,7 +280,7 @@ function validateUrlInput(urlInput, feedback) {
   
   if (result.valid) {
     const parsed = parseSheetUrl(url);
-    feedback.textContent = `✓ URL корректный (gid: ${parsed?.gid || '0'})`;
+    feedback.textContent = t('validation.urlValid', { gid: parsed?.gid || '0' });
     feedback.className = 'feedback success';
     return true;
   } else {
@@ -343,7 +344,7 @@ function setupLocalFileInput() {
       
       if (!file) {
         selectedLocalFile = null;
-        if (fileLabel) fileLabel.textContent = 'Выберите файл...';
+        if (fileLabel) fileLabel.textContent = t('setup.selectFile');
         if (playersFileDisplay) playersFileDisplay.classList.remove('has-file');
         if (feedback) {
           feedback.textContent = '';
@@ -361,20 +362,20 @@ function setupLocalFileInput() {
         const data = await loadLocalCSV(file);
         
         if (data.data.length === 0) {
-          throw new Error('Файл не содержит данных');
+          throw new Error(t('errors.fileEmpty'));
         }
         
         selectedLocalFile = file;
         if (playersFileDisplay) playersFileDisplay.classList.add('has-file');
         if (feedback) {
-          feedback.textContent = `✓ ${data.headers.length} колонок, ${data.data.length} строк`;
+          feedback.textContent = t('validation.fileValid', { columns: data.headers.length, rows: data.data.length });
           feedback.className = 'feedback success';
         }
       } catch (err) {
         selectedLocalFile = null;
         if (playersFileDisplay) playersFileDisplay.classList.remove('has-file');
         if (feedback) {
-          feedback.textContent = err.message || 'Ошибка чтения файла';
+          feedback.textContent = err.message || t('errors.fileReadError');
           feedback.className = 'feedback error';
         }
       }
@@ -395,7 +396,7 @@ function setupLocalFileInput() {
       
       if (!file) {
         selectedLocalTeamsFile = null;
-        if (teamsFileLabel) teamsFileLabel.textContent = 'Выберите файл...';
+        if (teamsFileLabel) teamsFileLabel.textContent = t('setup.selectFile');
         if (teamsFileDisplay) teamsFileDisplay.classList.remove('has-file');
         if (teamsFeedback) {
           teamsFeedback.textContent = '';
@@ -412,20 +413,20 @@ function setupLocalFileInput() {
         const data = await loadLocalCSV(file);
         
         if (data.data.length === 0) {
-          throw new Error('Файл не содержит данных');
+          throw new Error(t('errors.fileEmpty'));
         }
         
         selectedLocalTeamsFile = file;
         if (teamsFileDisplay) teamsFileDisplay.classList.add('has-file');
         if (teamsFeedback) {
-          teamsFeedback.textContent = `✓ ${data.headers.length} колонок, ${data.data.length} строк`;
+          teamsFeedback.textContent = t('validation.fileValid', { columns: data.headers.length, rows: data.data.length });
           teamsFeedback.className = 'feedback success';
         }
       } catch (err) {
         selectedLocalTeamsFile = null;
         if (teamsFileDisplay) teamsFileDisplay.classList.remove('has-file');
         if (teamsFeedback) {
-          teamsFeedback.textContent = err.message || 'Ошибка чтения файла';
+          teamsFeedback.textContent = err.message || t('errors.fileReadError');
           teamsFeedback.className = 'feedback error';
         }
       }
@@ -524,7 +525,7 @@ function setupSheetForm() {
     clearSetupError();
     
     // Show loading state
-    if (btnText) btnText.textContent = 'Проверка...';
+    if (btnText) btnText.textContent = t('setup.checking');
     if (btnLoader) /** @type {HTMLElement} */ (btnLoader).hidden = false;
     confirmBtn.setAttribute('disabled', 'true');
     
@@ -532,7 +533,7 @@ function setupSheetForm() {
       if (currentSourceType === 'local') {
         // Handle local CSV file for players
         if (!selectedLocalFile) {
-          throw new Error('Файл игроков не выбран');
+          throw new Error(t('errors.fileNotSelected'));
         }
         
         // Read and store players CSV data
@@ -580,8 +581,8 @@ function setupSheetForm() {
         // Clear inputs
         if (localFileInput) localFileInput.value = '';
         if (localTeamsFileInput) localTeamsFileInput.value = '';
-        if (fileLabel) fileLabel.textContent = 'Выберите файл...';
-        if (teamsFileLabel) teamsFileLabel.textContent = 'Выберите файл...';
+        if (fileLabel) fileLabel.textContent = t('setup.selectFile');
+        if (teamsFileLabel) teamsFileLabel.textContent = t('setup.selectFile');
         if (playersFileDisplay) playersFileDisplay.classList.remove('has-file');
         if (teamsFileDisplay) teamsFileDisplay.classList.remove('has-file');
         if (localCsvFeedback) {
@@ -616,7 +617,7 @@ function setupSheetForm() {
           } catch (teamsErr) {
             console.warn('[Setup] Teams sheet validation failed:', teamsErr);
             if (teamsFeedback) {
-              teamsFeedback.textContent = 'Не удалось подключить таблицу команд';
+              teamsFeedback.textContent = t('errors.teamsConnectionFailed');
               teamsFeedback.className = 'feedback error';
             }
           }
@@ -663,7 +664,7 @@ function setupSheetForm() {
       console.error('[Setup] Validation error:', err);
       
       if (currentSourceType === 'local') {
-        showSetupError(err.message || 'Ошибка загрузки файла', false);
+        showSetupError(err.message || t('errors.loadError'), false);
       } else {
         // Network errors are almost always caused by unpublished sheets
         const isLikelyNotPublished = 
@@ -671,16 +672,16 @@ function setupSheetForm() {
           err.name === 'TypeError';
         
         if (isLikelyNotPublished) {
-          showSetupError('Не удалось подключиться. Вероятно, таблица не опубликована.', true);
+          showSetupError(t('errors.connectionFailed'), true);
         } else if (err instanceof SheetError && err.type === 'NOT_FOUND') {
-          showSetupError('Таблица не найдена. Проверьте URL.', false);
+          showSetupError(t('errors.notFound'), false);
         } else {
-          showSetupError('Не удалось подключиться к таблице.', false);
+          showSetupError(t('errors.network'), false);
         }
       }
     } finally {
       // Reset button
-      if (btnText) btnText.textContent = 'Подключить';
+      if (btnText) btnText.textContent = t('setup.connect');
       if (btnLoader) /** @type {HTMLElement} */ (btnLoader).hidden = true;
       confirmBtn.removeAttribute('disabled');
     }
@@ -806,7 +807,7 @@ function setupExportButton() {
     const url = exportConfiguration();
     
     if (!url) {
-      alert('Экспорт недоступен. Убедитесь, что используются Google Таблицы, а не локальные CSV файлы.');
+      alert(t('errors.exportUnavailable'));
       return;
     }
     
@@ -816,7 +817,7 @@ function setupExportButton() {
       
       // Show success notification
       const originalTitle = exportBtn.getAttribute('title') || '';
-      exportBtn.setAttribute('title', 'Ссылка скопирована!');
+      exportBtn.setAttribute('title', t('export.copied'));
       exportBtn.style.opacity = '0.7';
       
       setTimeout(() => {
@@ -826,7 +827,7 @@ function setupExportButton() {
     } catch (err) {
       console.error('[Export] Failed to copy to clipboard:', err);
       // Fallback: show URL in prompt
-      prompt('Скопируйте эту ссылку:', url);
+      prompt(t('export.copyPrompt'), url);
     }
   });
 }
@@ -1175,5 +1176,35 @@ export function initializeEvents(callbacks) {
   setupPlayerRowClicks();
   setupColumnMappingModal();
   setupTeamsLayoutModal();
+  setupLanguageButton();
+}
+
+/**
+ * Sets up language toggle button
+ */
+function setupLanguageButton() {
+  const languageBtn = document.getElementById('language-btn');
+  const languageBtnText = document.getElementById('language-btn-text');
+  
+  if (!languageBtn || !languageBtnText) return;
+  
+  // Update button text based on current language
+  function updateLanguageButton() {
+    const lang = getLanguage();
+    languageBtnText.textContent = lang.toUpperCase();
+  }
+  
+  // Initial update
+  updateLanguageButton();
+  
+  // Subscribe to language changes
+  subscribeToLanguage(() => {
+    updateLanguageButton();
+  });
+  
+  // Toggle language on click
+  languageBtn.addEventListener('click', async () => {
+    await toggleLanguage();
+  });
 }
 

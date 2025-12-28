@@ -1,0 +1,169 @@
+{
+  "app": {
+    "title": "OverDraft — Player Pool"
+  },
+  "header": {
+    "players": "Игроки",
+    "teams": "Команды"
+  },
+  "setup": {
+    "title": "Подключить данные игроков",
+    "subtitle": "Выберите источник данных",
+    "sourceGoogle": "Google Sheets",
+    "sourceLocal": "Локальный CSV",
+    "playersSheetUrl": "URL таблицы игроков",
+    "playersSheetUrlPlaceholder": "https://docs.google.com/spreadsheets/d/...",
+    "teamsSheetUrl": "URL таблицы команд (опционально)",
+    "teamsSheetUrlPlaceholder": "https://docs.google.com/spreadsheets/d/...#gid=...",
+    "localPlayersFile": "CSV файл с данными игроков",
+    "localTeamsFile": "CSV файл с данными команд (опционально)",
+    "selectFile": "Выберите файл...",
+    "connect": "Подключить",
+    "checking": "Проверка...",
+    "notPublishedTitle": "Таблица не опубликована",
+    "notPublishedDescription": "Чтобы приложение могло читать данные, таблицу нужно опубликовать:",
+    "notPublishedStep1": "Откройте вашу Google Таблицу",
+    "notPublishedStep2": "Нажмите кнопку <strong>Поделиться</strong> (справа вверху)",
+    "notPublishedStep3": "В настройках доступа выберите <strong>Все, у кого есть ссылка</strong> с правами <strong>Читатель</strong>",
+    "notPublishedStep4": "Перейдите в <strong>Файл → Поделиться → Опубликовать в интернете</strong>",
+    "notPublishedStep5": "Выберите нужный лист",
+    "notPublishedStep6": "Нажмите <strong>Опубликовать</strong>",
+    "notPublishedStep7": "Вернитесь сюда и нажмите \"Подключить\" снова",
+    "notPublishedNote": "<strong>Важно:</strong> \"Доступ по ссылке\" — это НЕ то же самое. Нужно именно <strong>Опубликовать в интернете</strong> через меню Файл.",
+    "helpTitle": "Как опубликовать Google Таблицу?",
+    "helpStep1": "Откройте вашу Google Таблицу",
+    "helpStep2": "Нажмите кнопку <strong>Поделиться</strong> (справа вверху)",
+    "helpStep3": "В настройках доступа выберите <strong>Все, у кого есть ссылка</strong> с правами <strong>Читатель</strong>",
+    "helpStep4": "Перейдите в <strong>Файл → Поделиться → Опубликовать в интернете</strong>",
+    "helpStep5": "Выберите нужный лист для публикации",
+    "helpStep6": "Нажмите <strong>Опубликовать</strong>",
+    "helpStep7": "Скопируйте URL из браузера и вставьте сюда"
+  },
+  "settings": {
+    "title": "Настройки",
+    "playersSheet": "Таблица игроков",
+    "teamsSheet": "Таблица команд",
+    "notConfigured": "Не настроено",
+    "configureTeamsLayout": "Настроить разметку таблицы команд",
+    "changeSheets": "Изменить таблицы",
+    "application": "Приложение",
+    "refreshApp": "Обновить приложение",
+    "pollingInterval": "Polling Interval",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark"
+  },
+  "columnMapping": {
+    "title": "Настройка колонок",
+    "description": "Некоторые обязательные колонки не найдены автоматически. Укажите соответствие колонок в вашей таблице:",
+    "descriptionErrors": "Обнаружены ошибки в данных. Проверьте соответствие колонок:",
+    "descriptionCheck": "Проверьте соответствие колонок:",
+    "notSelected": "-- не выбрано --",
+    "confirm": "Подтвердить",
+    "columnNotFound": "Колонка не найдена",
+    "columnNotNumeric": "Колонка \"{column}\" не содержит числовых данных"
+  },
+  "teamsLayout": {
+    "title": "Настройка формата таблицы команд",
+    "description": "Настройте параметры, чтобы соответствовать вашей таблице:",
+    "startRow": "Отступ сверху (строк)",
+    "startCol": "Отступ слева (колонок)",
+    "teamsPerRow": "Команд в ряду",
+    "columnsPerTeam": "Колонок данных на команду",
+    "separatorColumns": "Пустых колонок между командами",
+    "headerRows": "Строк заголовка (имя + номер)",
+    "playersPerTeam": "Игроков в команде",
+    "rowsBetweenBlocks": "Пустых строк между блоками",
+    "previewTitle": "Превью таблицы",
+    "cancel": "Отмена",
+    "confirm": "Подтвердить"
+  },
+  "filters": {
+    "availableOnly": "Только доступные игроки",
+    "tankOnly": "Только танки",
+    "dpsOnly": "Только ДД",
+    "supportOnly": "Только саппорты"
+  },
+  "players": {
+    "panelTitle": "Информация об игроке",
+    "notSelected": "Игрок не выбран",
+    "rating": "Рейтинг",
+    "role": "Роль",
+    "heroes": "Герои",
+    "allData": "Все данные",
+    "nickname": "Ник игрока"
+  },
+  "teams": {
+    "notConfigured": "Таблица команд не настроена",
+    "configure": "Настроить",
+    "noData": "Данные команд не найдены",
+    "errorTitle": "Ошибка формата данных",
+    "schemaHelp": "Ожидаемый формат таблицы"
+  },
+  "roles": {
+    "tank": "Танк",
+    "dps": "ДД",
+    "support": "Саппорт"
+  },
+  "columns": {
+    "nickname": "Ник игрока",
+    "role": "Роль",
+    "rating": "Рейтинг",
+    "heroes": "Герои"
+  },
+  "status": {
+    "loading": "Loading data...",
+    "notUpdated": "Not updated yet",
+    "updated": "Updated {time}",
+    "justNow": "just now",
+    "secondsAgo": "{count}s ago",
+    "minutesAgo": "{count}m ago",
+    "hoursAgo": "{count}h ago"
+  },
+  "errors": {
+    "notPublished": "Таблица не опубликована в интернете",
+    "notFound": "Таблица не найдена. Проверьте URL.",
+    "network": "Ошибка сети. Проверьте подключение.",
+    "parseError": "Не удалось обработать данные таблицы.",
+    "unknown": "Произошла неизвестная ошибка.",
+    "localDataNotFound": "Локальные данные не найдены. Загрузите файл заново.",
+    "localTeamsDataNotFound": "Локальные данные команд не найдены. Загрузите файл заново.",
+    "connectionFailed": "Не удалось подключиться. Вероятно, таблица не опубликована.",
+    "loadError": "Ошибка загрузки",
+    "fileNotSelected": "Файл игроков не выбран",
+    "fileEmpty": "Файл не содержит данных",
+    "fileReadError": "Ошибка чтения файла",
+    "teamsConnectionFailed": "Не удалось подключить таблицу команд",
+    "importFailed": "Не удалось импортировать конфигурацию: {error}",
+    "exportUnavailable": "Экспорт недоступен. Убедитесь, что используются Google Таблицы, а не локальные CSV файлы.",
+    "retry": "Повторить",
+    "publishInstructions": "Как опубликовать Google Sheet",
+    "publishStep1": "Откройте ваш Google Sheet",
+    "publishStep2": "Нажмите кнопку <strong>Поделиться</strong> (справа вверху)",
+    "publishStep3": "В настройках доступа выберите <strong>Все, у кого есть ссылка</strong> с правами <strong>Читатель</strong>",
+    "publishStep4": "Перейдите в <strong>Файл → Поделиться → Опубликовать в интернете</strong>",
+    "publishStep5": "Выберите нужный лист для публикации",
+    "publishStep6": "Нажмите <strong>Опубликовать</strong>",
+    "publishStep7": "Вернитесь сюда и нажмите \"Повторить\"",
+    "publishNote": "<strong>Важно:</strong> \"Доступ по ссылке\" — это не то же самое, что \"Опубликовать в интернете\". Нужно именно опубликовать через меню Файл."
+  },
+  "validation": {
+    "urlRequired": "Введите URL",
+    "notGoogleUrl": "Это не ссылка на Google Таблицу",
+    "parseError": "Не удалось определить ID таблицы",
+    "invalidUrl": "Некорректный URL",
+    "urlValid": "✓ URL корректный (gid: {gid})",
+    "fileValid": "✓ {columns} колонок, {rows} строк",
+    "fileLoaded": "✓ Файл загружен"
+  },
+  "export": {
+    "tooltip": "Экспортировать конфигурацию",
+    "copied": "Ссылка скопирована!",
+    "copyPrompt": "Скопируйте эту ссылку:"
+  },
+  "language": {
+    "ru": "RU",
+    "en": "EN"
+  }
+}
+

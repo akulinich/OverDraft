@@ -18,6 +18,7 @@ import {
   saveTeamsLayoutConfig, 
   getDefaultTeamsLayoutConfig 
 } from './storage/persistence.js';
+import { init as initI18n, t, subscribe as subscribeToLanguage } from './i18n/index.js';
 
 /** @type {ReturnType<typeof createPollingManager>|null} */
 let pollingManager = null;
@@ -80,7 +81,7 @@ async function fetchAndRenderPlayers(skipColumnValidation = false) {
       // Load from localStorage
       data = loadLocalSheetData(sheet);
       if (!data) {
-        throw new Error('Локальные данные не найдены. Загрузите файл заново.');
+        throw new Error(t('errors.localDataNotFound'));
       }
     } else {
       // Fetch from Google Sheets
@@ -134,11 +135,11 @@ async function fetchAndRenderPlayers(skipColumnValidation = false) {
     
     const cached = store.getSheetData(sheet.spreadsheetId, sheet.gid);
     if (cached) {
-      renderer.showStatusError(err instanceof SheetError ? getErrorMessage(err) : 'Ошибка загрузки');
+      renderer.showStatusError(err instanceof SheetError ? getErrorMessage(err) : t('errors.loadError'));
     } else {
       const message = isLikelyNotPublished 
-        ? 'Не удалось подключиться. Вероятно, таблица не опубликована.'
-        : (err instanceof SheetError ? getErrorMessage(err) : err.message || 'Не удалось загрузить данные');
+        ? t('errors.connectionFailed')
+        : (err instanceof SheetError ? getErrorMessage(err) : err.message || t('errors.unknown'));
       renderer.showError(message, isLikelyNotPublished);
     }
     
@@ -266,7 +267,7 @@ async function fetchAndRenderTeams(skipLayoutValidation = false) {
       // Load from localStorage
       data = loadLocalTeamsSheetData(teamsSheet);
       if (!data) {
-        throw new Error('Локальные данные команд не найдены. Загрузите файл заново.');
+        throw new Error(t('errors.localTeamsDataNotFound'));
       }
     } else {
       // Fetch from Google Sheets
@@ -394,15 +395,15 @@ async function fetchAndRender() {
 function getErrorMessage(err) {
   switch (err.type) {
     case 'NOT_PUBLISHED':
-      return 'Таблица не опубликована в интернете';
+      return t('errors.notPublished');
     case 'NOT_FOUND':
-      return 'Таблица не найдена. Проверьте URL.';
+      return t('errors.notFound');
     case 'NETWORK':
-      return 'Ошибка сети. Проверьте подключение.';
+      return t('errors.network');
     case 'PARSE_ERROR':
-      return 'Не удалось обработать данные таблицы.';
+      return t('errors.parseError');
     default:
-      return 'Произошла неизвестная ошибка.';
+      return t('errors.unknown');
   }
 }
 
@@ -735,6 +736,12 @@ async function init() {
     console.log('[OverDraft] Initializing in development mode');
   }
   
+  // Initialize i18n (translations)
+  await initI18n();
+  if (config.isDev) {
+    console.log('[OverDraft] i18n initialized');
+  }
+  
   // Display version
   const versionEl = document.getElementById('app-version');
   if (versionEl) {
@@ -769,7 +776,7 @@ async function init() {
       }
     } else {
       console.error('[OverDraft] Failed to import configuration:', result.error);
-      alert(`Не удалось импортировать конфигурацию: ${result.error || 'Неизвестная ошибка'}`);
+      alert(t('errors.importFailed', { error: result.error || 'Unknown error' }));
     }
   }
   
@@ -798,6 +805,48 @@ async function init() {
     onTeamPlayerSelect,
     onColumnMappingConfirmed,
     onConfigureTeamsLayout
+  });
+  
+  // Subscribe to language changes to re-render data
+  subscribeToLanguage(() => {
+    // Re-render the current view with new translations
+    const sheet = store.getFirstSheet();
+    if (sheet) {
+      const cached = store.getSheetData(sheet.spreadsheetId, sheet.gid);
+      if (cached) {
+        const teamsSheet = store.getTeamsSheet();
+        const teamsData = teamsSheet 
+          ? store.getSheetData(teamsSheet.spreadsheetId, teamsSheet.gid)
+          : null;
+        
+        const selectedPlayer = store.getSelectedPlayer();
+        const activeTab = store.getActiveTab();
+        
+        // Re-render players table
+        renderer.renderPlayersTable(
+          cached.headers, 
+          cached.data,
+          teamsData?.parsedTeams || []
+        );
+        
+        // Re-render player details panel based on active tab
+        if (selectedPlayer) {
+          if (activeTab === 'teams') {
+            renderer.renderTeamsPlayerDetailsPanel(selectedPlayer, cached.headers);
+          } else {
+            renderer.renderPlayerDetailsPanel(selectedPlayer, cached.headers);
+          }
+        }
+        
+        // Re-render teams grid if on teams tab
+        if (activeTab === 'teams' && teamsData) {
+          renderer.renderTeamsGrid(teamsData.parsedTeams || [], cached.headers, cached.data);
+        }
+        
+        // Update status bar
+        renderer.updateStatusBar(cached.lastUpdated, pollingManager?.isRunning() ?? false);
+      }
+    }
   });
   
   // Show tabs if teams sheet is configured

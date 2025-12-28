@@ -245,6 +245,36 @@ body::before {
   background: rgba(0, 240, 255, 0.05);
 }
 
+/* Language toggle button */
+.btn-lang {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 var(--space-sm);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.btn-lang:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: rgba(0, 240, 255, 0.05);
+}
+
+.btn-lang:active {
+  transform: scale(0.95);
+}
+
 /* Modal */
 .modal {
   position: fixed;

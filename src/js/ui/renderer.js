@@ -6,6 +6,7 @@ import { createElement, escapeHtml, getRoleClass, getRatingClass, formatRelative
 import { validateTeamsData, formatValidationErrors, getSchemaDocumentation } from '../validation/schema.js';
 import { isLoaded as isOverfastLoaded } from '../api/overfast.js';
 import * as store from '../state/store.js';
+import { t } from '../i18n/index.js';
 
 /**
  * Mandatory column keys in display order
@@ -24,14 +25,18 @@ const MANDATORY_HEADER_PATTERNS = {
 };
 
 /**
- * Display labels for mandatory columns (used in table headers)
+ * Gets display labels for mandatory columns (used in table headers)
+ * Uses i18n translations
+ * @returns {Object<string, string>}
  */
-const MANDATORY_COLUMN_LABELS = {
-  nickname: 'Ник игрока',
-  role: 'Роль',
-  rating: 'Рейтинг',
-  heroes: 'Герои'
-};
+function getMandatoryColumnLabels() {
+  return {
+    nickname: t('columns.nickname'),
+    role: t('columns.role'),
+    rating: t('columns.rating'),
+    heroes: t('columns.heroes')
+  };
+}
 
 /** @type {Map<string, string>} Cache of previous row data for change detection */
 const previousRowData = new Map();
@@ -308,6 +313,9 @@ function findMandatoryColumnIndices(headers) {
   const sheetKey = sheet ? `${sheet.spreadsheetId}_${sheet.gid}` : null;
   const mapping = sheetKey ? store.getColumnMapping(sheetKey) : null;
   
+  // Get translated labels
+  const columnLabels = getMandatoryColumnLabels();
+  
   for (const key of MANDATORY_COLUMNS) {
     let index = -1;
     let originalHeader = '';
@@ -334,7 +342,7 @@ function findMandatoryColumnIndices(headers) {
       result.push({ 
         key, 
         index, 
-        header: MANDATORY_COLUMN_LABELS[key] || originalHeader,
+        header: columnLabels[key] || originalHeader,
         originalHeader 
       });
     }
@@ -445,7 +453,7 @@ export function renderPlayerDetailsPanel(player, headers) {
   
   // Rating stat with rank badge
   const ratingStat = createElement('div', { className: 'player-info-stat' });
-  ratingStat.appendChild(createElement('span', { className: 'stat-label' }, 'Рейтинг'));
+  ratingStat.appendChild(createElement('span', { className: 'stat-label' }, t('players.rating')));
   const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'md' });
   rankBadge.classList.add('stat-value');
   ratingStat.appendChild(rankBadge);
@@ -453,7 +461,7 @@ export function renderPlayerDetailsPanel(player, headers) {
   
   // Role stat
   const roleStat = createElement('div', { className: 'player-info-stat' });
-  roleStat.appendChild(createElement('span', { className: 'stat-label' }, 'Роль'));
+  roleStat.appendChild(createElement('span', { className: 'stat-label' }, t('players.role')));
   const roleValue = createElement('span', { className: 'stat-value stat-role' });
   roleValue.appendChild(createRoleIcon(player.role, { size: 'sm' }));
   roleValue.appendChild(document.createTextNode(' ' + getRoleDisplayName(player.role)));
@@ -465,7 +473,7 @@ export function renderPlayerDetailsPanel(player, headers) {
   // Heroes section with icons
   if (player.heroes) {
     const heroesSection = createElement('div', { className: 'player-info-heroes' });
-    heroesSection.appendChild(createElement('span', { className: 'stat-label' }, 'Герои'));
+    heroesSection.appendChild(createElement('span', { className: 'stat-label' }, t('players.heroes')));
     const heroIcons = createHeroIconsContainer(player.heroes, { size: 'md', maxIcons: 10 });
     heroIcons.classList.add('heroes-list');
     heroesSection.appendChild(heroIcons);
@@ -475,7 +483,7 @@ export function renderPlayerDetailsPanel(player, headers) {
   // Additional fields from rawRow (all original columns)
   if (player.rawRow && player.rawRow.length > 0 && headers.length > 0) {
     const additionalSection = createElement('div', { className: 'player-info-additional' });
-    additionalSection.appendChild(createElement('span', { className: 'section-label' }, 'Все данные'));
+    additionalSection.appendChild(createElement('span', { className: 'section-label' }, t('players.allData')));
     
     const fieldsList = createElement('div', { className: 'player-info-fields' });
     
@@ -505,7 +513,7 @@ export function clearPlayerDetailsPanel() {
   
   container.innerHTML = `
     <div class="player-details-empty">
-      <p>Игрок не выбран</p>
+      <p>${t('players.notSelected')}</p>
     </div>
   `;
   container.classList.remove('has-player');
@@ -537,9 +545,9 @@ export function updatePlayerRowSelection(rowIndex) {
  */
 function getRoleDisplayName(role) {
   switch (role) {
-    case 'tank': return 'Танк';
-    case 'dps': return 'ДД';
-    case 'support': return 'Саппорт';
+    case 'tank': return t('roles.tank');
+    case 'dps': return t('roles.dps');
+    case 'support': return t('roles.support');
     default: return role;
   }
 }
@@ -610,7 +618,8 @@ export function updateStatusBar(lastUpdate, isPolling = true) {
   const indicator = document.getElementById('polling-indicator');
   
   if (lastUpdateEl && lastUpdate) {
-    lastUpdateEl.textContent = `Updated ${formatRelativeTime(lastUpdate)}`;
+    const timeAgo = formatRelativeTime(lastUpdate);
+    lastUpdateEl.textContent = t('status.updated', { time: timeAgo });
   }
   
   if (indicator) {
@@ -672,7 +681,7 @@ export function updateTeamsSheetInfo(sheet) {
   if (sheet) {
     infoEl.innerHTML = formatSheetInfoHtml(sheet);
   } else {
-    infoEl.textContent = 'Не настроено';
+    infoEl.textContent = t('settings.notConfigured');
   }
 }
 
@@ -796,7 +805,7 @@ export async function renderTeamsView(headers, data, layoutConfig) {
   
   const teamsData = validationResult.data;
   if (!teamsData || !teamsData.teams) {
-    container.innerHTML = '<p class="teams-not-configured">Данные команд не найдены</p>';
+    container.innerHTML = `<p class="teams-not-configured">${t('teams.noData')}</p>`;
     return;
   }
   
@@ -919,8 +928,8 @@ export function showTeamsNotConfigured() {
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
         </svg>
-        <p>Таблица команд не настроена</p>
-        <button id="configure-teams-btn" class="btn btn-secondary">Настроить</button>
+        <p>${t('teams.notConfigured')}</p>
+        <button id="configure-teams-btn" class="btn btn-secondary">${t('teams.configure')}</button>
       </div>
     `;
     
@@ -961,7 +970,7 @@ export function renderTeamsPlayerDetailsPanel(player, headers) {
   
   // Rating stat with rank badge
   const ratingStat = createElement('div', { className: 'player-info-stat' });
-  ratingStat.appendChild(createElement('span', { className: 'stat-label' }, 'Рейтинг'));
+  ratingStat.appendChild(createElement('span', { className: 'stat-label' }, t('players.rating')));
   const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'md' });
   rankBadge.classList.add('stat-value');
   ratingStat.appendChild(rankBadge);
@@ -969,7 +978,7 @@ export function renderTeamsPlayerDetailsPanel(player, headers) {
   
   // Role stat
   const roleStat = createElement('div', { className: 'player-info-stat' });
-  roleStat.appendChild(createElement('span', { className: 'stat-label' }, 'Роль'));
+  roleStat.appendChild(createElement('span', { className: 'stat-label' }, t('players.role')));
   const roleValue = createElement('span', { className: 'stat-value stat-role' });
   roleValue.appendChild(createRoleIcon(player.role, { size: 'sm' }));
   roleValue.appendChild(document.createTextNode(' ' + getRoleDisplayName(player.role)));
@@ -981,7 +990,7 @@ export function renderTeamsPlayerDetailsPanel(player, headers) {
   // Heroes section with icons
   if (player.heroes) {
     const heroesSection = createElement('div', { className: 'player-info-heroes' });
-    heroesSection.appendChild(createElement('span', { className: 'stat-label' }, 'Герои'));
+    heroesSection.appendChild(createElement('span', { className: 'stat-label' }, t('players.heroes')));
     const heroIcons = createHeroIconsContainer(player.heroes, { size: 'md', maxIcons: 10 });
     heroIcons.classList.add('heroes-list');
     heroesSection.appendChild(heroIcons);
@@ -991,7 +1000,7 @@ export function renderTeamsPlayerDetailsPanel(player, headers) {
   // Additional fields from rawRow (all original columns)
   if (player.rawRow && player.rawRow.length > 0 && headers.length > 0) {
     const additionalSection = createElement('div', { className: 'player-info-additional' });
-    additionalSection.appendChild(createElement('span', { className: 'section-label' }, 'Все данные'));
+    additionalSection.appendChild(createElement('span', { className: 'section-label' }, t('players.allData')));
     
     const fieldsList = createElement('div', { className: 'player-info-fields' });
     
@@ -1021,7 +1030,7 @@ export function clearTeamsPlayerDetailsPanel() {
   
   container.innerHTML = `
     <div class="player-details-empty">
-      <p>Игрок не выбран</p>
+      <p>${t('players.notSelected')}</p>
     </div>
   `;
   container.classList.remove('has-player');

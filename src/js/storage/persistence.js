@@ -8,7 +8,8 @@ const STORAGE_KEYS = {
   SETTINGS: 'overdraft_settings',
   COLUMN_MAPPINGS: 'overdraft_column_mappings',
   TEAMS_LAYOUT: 'overdraft_teams_layout',
-  LOCAL_CSV_DATA: 'overdraft_local_csv_data'
+  LOCAL_CSV_DATA: 'overdraft_local_csv_data',
+  LANGUAGE: 'overdraft_language'
 };
 
 const CURRENT_VERSION = 1;
@@ -339,6 +340,34 @@ export function removeLocalCSVData(fileName) {
 }
 
 /**
+ * Loads language preference from localStorage
+ * @returns {'ru'|'en'|null}
+ */
+export function loadLanguage() {
+  try {
+    const lang = localStorage.getItem(STORAGE_KEYS.LANGUAGE);
+    if (lang === 'ru' || lang === 'en') {
+      return lang;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Saves language preference to localStorage
+ * @param {'ru'|'en'} lang
+ */
+export function saveLanguage(lang) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.LANGUAGE, lang);
+  } catch (err) {
+    console.error('[Persistence] Failed to save language:', err);
+  }
+}
+
+/**
  * Clears all stored data
  */
 export function clearAll() {
@@ -348,6 +377,7 @@ export function clearAll() {
   localStorage.removeItem(STORAGE_KEYS.COLUMN_MAPPINGS);
   localStorage.removeItem(STORAGE_KEYS.TEAMS_LAYOUT);
   localStorage.removeItem(STORAGE_KEYS.LOCAL_CSV_DATA);
+  localStorage.removeItem(STORAGE_KEYS.LANGUAGE);
 }
 
 

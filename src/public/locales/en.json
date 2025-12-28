@@ -1,0 +1,169 @@
+{
+  "app": {
+    "title": "OverDraft — Player Pool"
+  },
+  "header": {
+    "players": "Players",
+    "teams": "Teams"
+  },
+  "setup": {
+    "title": "Connect Player Data",
+    "subtitle": "Select data source",
+    "sourceGoogle": "Google Sheets",
+    "sourceLocal": "Local CSV",
+    "playersSheetUrl": "Players sheet URL",
+    "playersSheetUrlPlaceholder": "https://docs.google.com/spreadsheets/d/...",
+    "teamsSheetUrl": "Teams sheet URL (optional)",
+    "teamsSheetUrlPlaceholder": "https://docs.google.com/spreadsheets/d/...#gid=...",
+    "localPlayersFile": "CSV file with player data",
+    "localTeamsFile": "CSV file with team data (optional)",
+    "selectFile": "Select file...",
+    "connect": "Connect",
+    "checking": "Checking...",
+    "notPublishedTitle": "Sheet is not published",
+    "notPublishedDescription": "To allow the app to read data, you need to publish the sheet:",
+    "notPublishedStep1": "Open your Google Sheet",
+    "notPublishedStep2": "Click <strong>Share</strong> button (top right)",
+    "notPublishedStep3": "In access settings, select <strong>Anyone with the link</strong> with <strong>Viewer</strong> rights",
+    "notPublishedStep4": "Go to <strong>File → Share → Publish to the web</strong>",
+    "notPublishedStep5": "Select the desired sheet",
+    "notPublishedStep6": "Click <strong>Publish</strong>",
+    "notPublishedStep7": "Return here and click \"Connect\" again",
+    "notPublishedNote": "<strong>Important:</strong> \"Link sharing\" is NOT the same thing. You need to <strong>Publish to the web</strong> via the File menu.",
+    "helpTitle": "How to publish a Google Sheet?",
+    "helpStep1": "Open your Google Sheet",
+    "helpStep2": "Click <strong>Share</strong> button (top right)",
+    "helpStep3": "In access settings, select <strong>Anyone with the link</strong> with <strong>Viewer</strong> rights",
+    "helpStep4": "Go to <strong>File → Share → Publish to the web</strong>",
+    "helpStep5": "Select the sheet to publish",
+    "helpStep6": "Click <strong>Publish</strong>",
+    "helpStep7": "Copy the URL from the browser and paste it here"
+  },
+  "settings": {
+    "title": "Settings",
+    "playersSheet": "Players sheet",
+    "teamsSheet": "Teams sheet",
+    "notConfigured": "Not configured",
+    "configureTeamsLayout": "Configure teams table layout",
+    "changeSheets": "Change sheets",
+    "application": "Application",
+    "refreshApp": "Refresh application",
+    "pollingInterval": "Polling Interval",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark"
+  },
+  "columnMapping": {
+    "title": "Column Configuration",
+    "description": "Some required columns were not detected automatically. Map the columns from your sheet:",
+    "descriptionErrors": "Errors detected in data. Check the column mapping:",
+    "descriptionCheck": "Check the column mapping:",
+    "notSelected": "-- not selected --",
+    "confirm": "Confirm",
+    "columnNotFound": "Column not found",
+    "columnNotNumeric": "Column \"{column}\" does not contain numeric data"
+  },
+  "teamsLayout": {
+    "title": "Teams Table Layout Configuration",
+    "description": "Adjust parameters to match your table:",
+    "startRow": "Top offset (rows)",
+    "startCol": "Left offset (columns)",
+    "teamsPerRow": "Teams per row",
+    "columnsPerTeam": "Data columns per team",
+    "separatorColumns": "Empty columns between teams",
+    "headerRows": "Header rows (name + number)",
+    "playersPerTeam": "Players per team",
+    "rowsBetweenBlocks": "Empty rows between blocks",
+    "previewTitle": "Table preview",
+    "cancel": "Cancel",
+    "confirm": "Confirm"
+  },
+  "filters": {
+    "availableOnly": "Available players only",
+    "tankOnly": "Tanks only",
+    "dpsOnly": "DPS only",
+    "supportOnly": "Supports only"
+  },
+  "players": {
+    "panelTitle": "Player Information",
+    "notSelected": "No player selected",
+    "rating": "Rating",
+    "role": "Role",
+    "heroes": "Heroes",
+    "allData": "All data",
+    "nickname": "Player nickname"
+  },
+  "teams": {
+    "notConfigured": "Teams sheet not configured",
+    "configure": "Configure",
+    "noData": "No teams data found",
+    "errorTitle": "Data format error",
+    "schemaHelp": "Expected table format"
+  },
+  "roles": {
+    "tank": "Tank",
+    "dps": "DPS",
+    "support": "Support"
+  },
+  "columns": {
+    "nickname": "Nickname",
+    "role": "Role",
+    "rating": "Rating",
+    "heroes": "Heroes"
+  },
+  "status": {
+    "loading": "Loading data...",
+    "notUpdated": "Not updated yet",
+    "updated": "Updated {time}",
+    "justNow": "just now",
+    "secondsAgo": "{count}s ago",
+    "minutesAgo": "{count}m ago",
+    "hoursAgo": "{count}h ago"
+  },
+  "errors": {
+    "notPublished": "Sheet is not published to the web",
+    "notFound": "Sheet not found. Check the URL.",
+    "network": "Network error. Check your connection.",
+    "parseError": "Failed to parse sheet data.",
+    "unknown": "An unknown error occurred.",
+    "localDataNotFound": "Local data not found. Please reload the file.",
+    "localTeamsDataNotFound": "Local teams data not found. Please reload the file.",
+    "connectionFailed": "Connection failed. The sheet is probably not published.",
+    "loadError": "Load error",
+    "fileNotSelected": "Players file not selected",
+    "fileEmpty": "File contains no data",
+    "fileReadError": "File read error",
+    "teamsConnectionFailed": "Failed to connect teams sheet",
+    "importFailed": "Failed to import configuration: {error}",
+    "exportUnavailable": "Export unavailable. Make sure you are using Google Sheets, not local CSV files.",
+    "retry": "Retry",
+    "publishInstructions": "How to publish Google Sheet",
+    "publishStep1": "Open your Google Sheet",
+    "publishStep2": "Click <strong>Share</strong> button (top right)",
+    "publishStep3": "In access settings, select <strong>Anyone with the link</strong> with <strong>Viewer</strong> rights",
+    "publishStep4": "Go to <strong>File → Share → Publish to the web</strong>",
+    "publishStep5": "Select the sheet to publish",
+    "publishStep6": "Click <strong>Publish</strong>",
+    "publishStep7": "Return here and click \"Retry\"",
+    "publishNote": "<strong>Important:</strong> \"Link sharing\" is not the same as \"Publish to the web\". You need to publish via the File menu."
+  },
+  "validation": {
+    "urlRequired": "Enter URL",
+    "notGoogleUrl": "This is not a Google Sheets URL",
+    "parseError": "Could not parse spreadsheet ID",
+    "invalidUrl": "Invalid URL",
+    "urlValid": "✓ URL valid (gid: {gid})",
+    "fileValid": "✓ {columns} columns, {rows} rows",
+    "fileLoaded": "✓ File loaded"
+  },
+  "export": {
+    "tooltip": "Export configuration",
+    "copied": "Link copied!",
+    "copyPrompt": "Copy this link:"
+  },
+  "language": {
+    "ru": "RU",
+    "en": "EN"
+  }
+}
+

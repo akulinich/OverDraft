@@ -4,6 +4,7 @@
 
 import { getRole, getHero, parseHeroesString, isLoaded as isOverfastLoaded } from '../api/overfast.js';
 import { getRankFromRating } from '../utils/ranks.js';
+import { t, isInitialized as isI18nInitialized } from '../i18n/index.js';
 
 /**
  * Creates an HTML element with attributes and content
@@ -92,6 +93,19 @@ export function getRatingClass(rating) {
 export function formatRelativeTime(date) {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
   
+  // Use translations if i18n is initialized
+  if (isI18nInitialized()) {
+    if (seconds < 5) return t('status.justNow');
+    if (seconds < 60) return t('status.secondsAgo', { count: seconds });
+    
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return t('status.minutesAgo', { count: minutes });
+    
+    const hours = Math.floor(minutes / 60);
+    return t('status.hoursAgo', { count: hours });
+  }
+  
+  // Fallback for before i18n is initialized
   if (seconds < 5) return 'just now';
   if (seconds < 60) return `${seconds}s ago`;
   

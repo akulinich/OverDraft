@@ -16,6 +16,8 @@ import {
   loadLocalCSVData,
   removeLocalCSVData,
   getDefaultTeamsLayoutConfig,
+  loadLanguage,
+  saveLanguage,
   clearAll
 } from '../../js/storage/persistence.js';
 
@@ -234,7 +236,73 @@ describe('Persistence Layer', () => {
       
       clearAll();
       
-      expect(localStorage.removeItem).toHaveBeenCalledTimes(6); // All 6 storage keys
+      expect(localStorage.removeItem).toHaveBeenCalledTimes(7); // All keys including language 6 storage keys
+    });
+  });
+
+  describe('Language Persistence', () => {
+    it('returns null when no language stored', () => {
+      const lang = loadLanguage();
+      expect(lang).toBeNull();
+    });
+
+    it('saves and loads Russian language preference', () => {
+      saveLanguage('ru');
+      expect(loadLanguage()).toBe('ru');
+    });
+
+    it('saves and loads English language preference', () => {
+      saveLanguage('en');
+      expect(loadLanguage()).toBe('en');
+    });
+
+    it('overwrites previous language preference', () => {
+      saveLanguage('en');
+      expect(loadLanguage()).toBe('en');
+
+      saveLanguage('ru');
+      expect(loadLanguage()).toBe('ru');
+    });
+
+    it('returns null for invalid stored language', () => {
+      mockStorage['overdraft_language'] = 'de';
+      expect(loadLanguage()).toBeNull();
+    });
+
+    it('returns null for empty stored language', () => {
+      mockStorage['overdraft_language'] = '';
+      expect(loadLanguage()).toBeNull();
+    });
+
+    it('clears language on clearAll', () => {
+      saveLanguage('en');
+      expect(loadLanguage()).toBe('en');
+
+      clearAll();
+      expect(loadLanguage()).toBeNull();
+    });
+
+    it('handles localStorage errors gracefully on save', () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      localStorage.setItem = vi.fn(() => {
+        throw new Error('QuotaExceededError');
+      });
+
+      // Should not throw
+      expect(() => saveLanguage('en')).not.toThrow();
+      expect(consoleSpy).toHaveBeenCalled();
+
+      consoleSpy.mockRestore();
+    });
+
+    it('handles localStorage errors gracefully on load', () => {
+      localStorage.getItem = vi.fn(() => {
+        throw new Error('SecurityError');
+      });
+
+      // Should return null and not throw
+      expect(loadLanguage()).toBeNull();
     });
   });
 

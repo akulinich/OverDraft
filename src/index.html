@@ -16,8 +16,8 @@
       <div class="modal-backdrop"></div>
       <div class="modal-content">
         <div id="setup-modal-header" class="modal-header">
-          <h2>Подключить данные игроков</h2>
-          <p class="modal-subtitle">Выберите источник данных</p>
+          <h2 data-i18n="setup.title">Подключить данные игроков</h2>
+          <p class="modal-subtitle" data-i18n="setup.subtitle">Выберите источник данных</p>
         </div>
         <div class="modal-body">
           <!-- Source Type Toggle -->
@@ -32,7 +32,7 @@
                     <line x1="8" y1="13" x2="16" y2="13"/>
                     <line x1="8" y1="17" x2="16" y2="17"/>
                   </svg>
-                  Google Sheets
+                  <span data-i18n="setup.sourceGoogle">Google Sheets</span>
                 </span>
               </label>
               <label class="source-option">
@@ -42,7 +42,7 @@
                     <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
                     <polyline points="13 2 13 9 20 9"/>
                   </svg>
-                  Локальный CSV
+                  <span data-i18n="setup.sourceLocal">Локальный CSV</span>
                 </span>
               </label>
             </div>
@@ -51,10 +51,11 @@
           <!-- Google Sheets URL Input -->
           <div id="google-source-fields" class="sheet-config-section">
             <div class="input-group">
-              <label for="sheet-url" class="section-title">URL таблицы игроков</label>
+              <label for="sheet-url" class="section-title" data-i18n="setup.playersSheetUrl">URL таблицы игроков</label>
               <input 
                 type="url" 
                 id="sheet-url" 
+                data-i18n-placeholder="setup.playersSheetUrlPlaceholder"
                 placeholder="https://docs.google.com/spreadsheets/d/..."
                 autocomplete="off"
               >
@@ -65,7 +66,7 @@
           <!-- Local CSV File Input (Players) -->
           <div id="local-source-fields" class="sheet-config-section" hidden>
             <div class="input-group">
-              <label for="local-csv-file" class="section-title">CSV файл с данными игроков</label>
+              <label for="local-csv-file" class="section-title" data-i18n="setup.localPlayersFile">CSV файл с данными игроков</label>
               <div class="file-input-wrapper">
                 <input 
                   type="file" 
@@ -78,7 +79,7 @@
                     <polyline points="17 8 12 3 7 8"/>
                     <line x1="12" y1="3" x2="12" y2="15"/>
                   </svg>
-                  <span id="file-input-label">Выберите файл...</span>
+                  <span id="file-input-label" data-i18n="setup.selectFile">Выберите файл...</span>
                 </div>
               </div>
               <div id="local-csv-feedback" class="feedback"></div>
@@ -88,10 +89,11 @@
           <!-- Teams Sheet (Google Sheets URL) -->
           <div id="teams-url-section" class="sheet-config-section">
             <div class="input-group">
-              <label for="teams-url" class="section-title">URL таблицы команд (опционально)</label>
+              <label for="teams-url" class="section-title" data-i18n="setup.teamsSheetUrl">URL таблицы команд (опционально)</label>
               <input 
                 type="url" 
                 id="teams-url" 
+                data-i18n-placeholder="setup.teamsSheetUrlPlaceholder"
                 placeholder="https://docs.google.com/spreadsheets/d/...#gid=..."
                 autocomplete="off"
               >
@@ -102,7 +104,7 @@
           <!-- Local Teams CSV File Input -->
           <div id="local-teams-source-fields" class="sheet-config-section" hidden>
             <div class="input-group">
-              <label for="local-teams-csv-file" class="section-title">CSV файл с данными команд (опционально)</label>
+              <label for="local-teams-csv-file" class="section-title" data-i18n="setup.localTeamsFile">CSV файл с данными команд (опционально)</label>
               <div class="file-input-wrapper">
                 <input 
                   type="file" 
@@ -115,7 +117,7 @@
                     <polyline points="17 8 12 3 7 8"/>
                     <line x1="12" y1="3" x2="12" y2="15"/>
                   </svg>
-                  <span id="teams-file-input-label">Выберите файл...</span>
+                  <span id="teams-file-input-label" data-i18n="setup.selectFile">Выберите файл...</span>
                 </div>
               </div>
               <div id="local-teams-csv-feedback" class="feedback"></div>
@@ -125,18 +127,18 @@
         <!-- Error instructions (shown when sheet is not published) -->
         <div id="setup-instructions" class="setup-instructions" hidden>
           <div class="instruction-box warning">
-            <h3>⚠️ Таблица не опубликована</h3>
-            <p>Чтобы приложение могло читать данные, таблицу нужно опубликовать:</p>
+            <h3 data-i18n="setup.notPublishedTitle">⚠️ Таблица не опубликована</h3>
+            <p data-i18n="setup.notPublishedDescription">Чтобы приложение могло читать данные, таблицу нужно опубликовать:</p>
             <ol>
-              <li>Откройте вашу Google Таблицу</li>
-              <li>Нажмите кнопку <strong>Поделиться</strong> (справа вверху)</li>
-              <li>В настройках доступа выберите <strong>Все, у кого есть ссылка</strong> с правами <strong>Читатель</strong></li>
-              <li>Перейдите в <strong>Файл → Поделиться → Опубликовать в интернете</strong></li>
-              <li>Выберите нужный лист</li>
-              <li>Нажмите <strong>Опубликовать</strong></li>
-              <li>Вернитесь сюда и нажмите "Подключить" снова</li>
+              <li data-i18n="setup.notPublishedStep1">Откройте вашу Google Таблицу</li>
+              <li data-i18n="setup.notPublishedStep2" data-i18n-html>Нажмите кнопку <strong>Поделиться</strong> (справа вверху)</li>
+              <li data-i18n="setup.notPublishedStep3" data-i18n-html>В настройках доступа выберите <strong>Все, у кого есть ссылка</strong> с правами <strong>Читатель</strong></li>
+              <li data-i18n="setup.notPublishedStep4" data-i18n-html>Перейдите в <strong>Файл → Поделиться → Опубликовать в интернете</strong></li>
+              <li data-i18n="setup.notPublishedStep5">Выберите нужный лист</li>
+              <li data-i18n="setup.notPublishedStep6" data-i18n-html>Нажмите <strong>Опубликовать</strong></li>
+              <li data-i18n="setup.notPublishedStep7">Вернитесь сюда и нажмите "Подключить" снова</li>
             </ol>
-            <p class="instruction-note">
+            <p class="instruction-note" data-i18n="setup.notPublishedNote" data-i18n-html>
               <strong>Важно:</strong> "Доступ по ссылке" — это НЕ то же самое. 
               Нужно именно <strong>Опубликовать в интернете</strong> через меню Файл.
             </p>
@@ -145,21 +147,21 @@
 
         <div class="modal-footer">
           <button id="confirm-sheet" class="btn btn-primary" disabled>
-            <span class="btn-text">Подключить</span>
+            <span class="btn-text" data-i18n="setup.connect">Подключить</span>
             <span class="btn-loader" hidden></span>
           </button>
         </div>
         <div class="help-section">
           <details>
-            <summary>Как опубликовать Google Таблицу?</summary>
+            <summary data-i18n="setup.helpTitle">Как опубликовать Google Таблицу?</summary>
             <ol>
-              <li>Откройте вашу Google Таблицу</li>
-              <li>Нажмите кнопку <strong>Поделиться</strong> (справа вверху)</li>
-              <li>В настройках доступа выберите <strong>Все, у кого есть ссылка</strong> с правами <strong>Читатель</strong></li>
-              <li>Перейдите в <strong>Файл → Поделиться → Опубликовать в интернете</strong></li>
-              <li>Выберите нужный лист для публикации</li>
-              <li>Нажмите <strong>Опубликовать</strong></li>
-              <li>Скопируйте URL из браузера и вставьте сюда</li>
+              <li data-i18n="setup.helpStep1">Откройте вашу Google Таблицу</li>
+              <li data-i18n="setup.helpStep2" data-i18n-html>Нажмите кнопку <strong>Поделиться</strong> (справа вверху)</li>
+              <li data-i18n="setup.helpStep3" data-i18n-html>В настройках доступа выберите <strong>Все, у кого есть ссылка</strong> с правами <strong>Читатель</strong></li>
+              <li data-i18n="setup.helpStep4" data-i18n-html>Перейдите в <strong>Файл → Поделиться → Опубликовать в интернете</strong></li>
+              <li data-i18n="setup.helpStep5">Выберите нужный лист для публикации</li>
+              <li data-i18n="setup.helpStep6" data-i18n-html>Нажмите <strong>Опубликовать</strong></li>
+              <li data-i18n="setup.helpStep7">Скопируйте URL из браузера и вставьте сюда</li>
             </ol>
           </details>
         </div>
@@ -171,7 +173,7 @@
       <div class="modal-backdrop"></div>
       <div class="modal-content">
         <div class="modal-header">
-          <h2>Settings</h2>
+          <h2 data-i18n="settings.title">Settings</h2>
           <button id="close-settings" class="btn-icon" aria-label="Close">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 6L6 18M6 6l12 12"/>
@@ -180,12 +182,12 @@
         </div>
         <div class="modal-body">
           <div class="settings-section">
-            <h3>Таблица игроков</h3>
+            <h3 data-i18n="settings.playersSheet">Таблица игроков</h3>
             <div id="current-sheet-info" class="sheet-info"></div>
           </div>
           <div class="settings-section" id="teams-sheet-section">
-            <h3>Таблица команд</h3>
-            <div id="current-teams-info" class="sheet-info">Не настроено</div>
+            <h3 data-i18n="settings.teamsSheet">Таблица команд</h3>
+            <div id="current-teams-info" class="sheet-info" data-i18n="settings.notConfigured">Не настроено</div>
             <button id="configure-teams-layout" class="btn btn-secondary" hidden>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
                 <rect x="3" y="3" width="7" height="7"/>
@@ -193,34 +195,34 @@
                 <rect x="3" y="14" width="7" height="7"/>
                 <rect x="14" y="14" width="7" height="7"/>
               </svg>
-              Настроить разметку таблицы команд
+              <span data-i18n="settings.configureTeamsLayout">Настроить разметку таблицы команд</span>
             </button>
           </div>
           <div class="settings-section">
-            <button id="change-sheet" class="btn btn-secondary">Изменить таблицы</button>
+            <button id="change-sheet" class="btn btn-secondary" data-i18n="settings.changeSheets">Изменить таблицы</button>
           </div>
           <div class="settings-section">
-            <h3>Приложение</h3>
+            <h3 data-i18n="settings.application">Приложение</h3>
             <button id="force-refresh" class="btn btn-secondary">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
                 <path d="M23 4v6h-6M1 20v-6h6"/>
                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
               </svg>
-              Обновить приложение
+              <span data-i18n="settings.refreshApp">Обновить приложение</span>
             </button>
           </div>
           <div class="settings-section">
-            <h3>Polling Interval</h3>
+            <h3 data-i18n="settings.pollingInterval">Polling Interval</h3>
             <div class="slider-group">
               <input type="range" id="polling-interval" min="500" max="5000" step="500" value="1000">
               <span id="polling-value">1s</span>
             </div>
           </div>
           <div class="settings-section">
-            <h3>Theme</h3>
+            <h3 data-i18n="settings.theme">Theme</h3>
             <div class="theme-toggle">
-              <button id="theme-light" class="theme-btn" data-theme="light">Light</button>
-              <button id="theme-dark" class="theme-btn active" data-theme="dark">Dark</button>
+              <button id="theme-light" class="theme-btn" data-theme="light" data-i18n="settings.themeLight">Light</button>
+              <button id="theme-dark" class="theme-btn active" data-theme="dark" data-i18n="settings.themeDark">Dark</button>
             </div>
           </div>
           <div class="settings-section version-section">
@@ -238,7 +240,7 @@
       <div class="modal-backdrop"></div>
       <div class="modal-content modal-content-wide">
         <div class="modal-header">
-          <h2>Настройка колонок</h2>
+          <h2 data-i18n="columnMapping.title">Настройка колонок</h2>
           <button id="close-column-mapping" class="btn-icon" aria-label="Close">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 6L6 18M6 6l12 12"/>
@@ -246,7 +248,7 @@
           </button>
         </div>
         <div class="modal-body">
-          <p class="modal-description" id="column-mapping-description">
+          <p class="modal-description" id="column-mapping-description" data-i18n="columnMapping.description">
             Некоторые обязательные колонки не найдены автоматически.
             Укажите соответствие колонок в вашей таблице:
           </p>
@@ -257,7 +259,7 @@
         </div>
         <div class="modal-footer">
           <button id="confirm-column-mapping" class="btn btn-primary" disabled>
-            <span class="btn-text">Подтвердить</span>
+            <span class="btn-text" data-i18n="columnMapping.confirm">Подтвердить</span>
           </button>
         </div>
       </div>
@@ -268,7 +270,7 @@
       <div class="modal-backdrop"></div>
       <div class="modal-content modal-content-xl">
         <div class="modal-header">
-          <h2>Настройка формата таблицы команд</h2>
+          <h2 data-i18n="teamsLayout.title">Настройка формата таблицы команд</h2>
           <button id="close-teams-layout" class="btn-icon" aria-label="Close">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 6L6 18M6 6l12 12"/>
@@ -276,49 +278,49 @@
           </button>
         </div>
         <div class="modal-body">
-          <p class="modal-description">
+          <p class="modal-description" data-i18n="teamsLayout.description">
             Настройте параметры, чтобы соответствовать вашей таблице:
           </p>
           
           <!-- Layout Parameters -->
           <div class="teams-layout-params">
             <div class="param-group">
-              <label for="param-start-row">Отступ сверху (строк)</label>
+              <label for="param-start-row" data-i18n="teamsLayout.startRow">Отступ сверху (строк)</label>
               <input type="number" id="param-start-row" min="0" max="50" value="0">
             </div>
             <div class="param-group">
-              <label for="param-start-col">Отступ слева (колонок)</label>
+              <label for="param-start-col" data-i18n="teamsLayout.startCol">Отступ слева (колонок)</label>
               <input type="number" id="param-start-col" min="0" max="50" value="0">
             </div>
             <div class="param-group">
-              <label for="param-teams-per-row">Команд в ряду</label>
+              <label for="param-teams-per-row" data-i18n="teamsLayout.teamsPerRow">Команд в ряду</label>
               <input type="number" id="param-teams-per-row" min="1" max="10" value="3">
             </div>
             <div class="param-group">
-              <label for="param-columns-per-team">Колонок данных на команду</label>
+              <label for="param-columns-per-team" data-i18n="teamsLayout.columnsPerTeam">Колонок данных на команду</label>
               <input type="number" id="param-columns-per-team" min="2" max="10" value="4">
             </div>
             <div class="param-group">
-              <label for="param-separator-columns">Пустых колонок между командами</label>
+              <label for="param-separator-columns" data-i18n="teamsLayout.separatorColumns">Пустых колонок между командами</label>
               <input type="number" id="param-separator-columns" min="0" max="5" value="1">
             </div>
             <div class="param-group">
-              <label for="param-header-rows">Строк заголовка (имя + номер)</label>
+              <label for="param-header-rows" data-i18n="teamsLayout.headerRows">Строк заголовка (имя + номер)</label>
               <input type="number" id="param-header-rows" min="1" max="5" value="2">
             </div>
             <div class="param-group">
-              <label for="param-players-per-team">Игроков в команде</label>
+              <label for="param-players-per-team" data-i18n="teamsLayout.playersPerTeam">Игроков в команде</label>
               <input type="number" id="param-players-per-team" min="1" max="15" value="5">
             </div>
             <div class="param-group">
-              <label for="param-rows-between-blocks">Пустых строк между блоками</label>
+              <label for="param-rows-between-blocks" data-i18n="teamsLayout.rowsBetweenBlocks">Пустых строк между блоками</label>
               <input type="number" id="param-rows-between-blocks" min="0" max="5" value="1">
             </div>
           </div>
           
           <!-- Table Preview with Grid -->
           <div class="teams-layout-preview-section">
-            <h3>Превью таблицы</h3>
+            <h3 data-i18n="teamsLayout.previewTitle">Превью таблицы</h3>
             <div class="teams-layout-preview-wrapper">
               <div id="teams-layout-preview" class="teams-layout-preview">
                 <!-- Preview table will be rendered here -->
@@ -333,9 +335,9 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button id="cancel-teams-layout" class="btn btn-secondary">Отмена</button>
+          <button id="cancel-teams-layout" class="btn btn-secondary" data-i18n="teamsLayout.cancel">Отмена</button>
           <button id="confirm-teams-layout" class="btn btn-primary" disabled>
-            <span class="btn-text">Подтвердить</span>
+            <span class="btn-text" data-i18n="teamsLayout.confirm">Подтвердить</span>
           </button>
         </div>
       </div>
@@ -349,12 +351,15 @@
         </h1>
       </div>
       <div class="header-right">
-        <button id="export-btn" class="btn-icon" aria-label="Export configuration" title="Экспортировать конфигурацию" hidden>
+        <button id="export-btn" class="btn-icon" aria-label="Export configuration" data-i18n-title="export.tooltip" title="Экспортировать конфигурацию" hidden>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
+        </button>
+        <button id="language-btn" class="btn-lang" aria-label="Change language">
+          <span id="language-btn-text">RU</span>
         </button>
         <button id="settings-btn" class="btn-icon" aria-label="Settings">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -370,13 +375,13 @@
       <div class="tabs-bar">
         <!-- Tabs Navigation -->
         <nav id="main-tabs" class="tabs-nav" hidden>
-          <button class="tab-btn active" data-tab="players">Игроки</button>
-          <button class="tab-btn" data-tab="teams">Команды</button>
+          <button class="tab-btn active" data-tab="players" data-i18n="header.players">Игроки</button>
+          <button class="tab-btn" data-tab="teams" data-i18n="header.teams">Команды</button>
         </nav>
 
         <!-- Player Filters -->
         <div id="player-filters" class="filters-group" hidden>
-          <button class="filter-btn" data-filter="available" title="Только доступные игроки">
+          <button class="filter-btn" data-filter="available" data-i18n-title="filters.availableOnly" title="Только доступные игроки">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
               <circle cx="9" cy="7" r="4"/>
@@ -385,19 +390,19 @@
             </svg>
           </button>
           <div class="filter-divider"></div>
-          <button class="filter-btn" data-filter="tank" title="Только танки">
+          <button class="filter-btn" data-filter="tank" data-i18n-title="filters.tankOnly" title="Только танки">
             <svg class="role-filter-icon" width="18" height="18" viewBox="0 0 24 24">
               <use href="./public/icons/roles/tank.svg#icon"></use>
             </svg>
             <img class="role-filter-img" src="./public/icons/roles/tank.svg" alt="Tank" width="18" height="18">
           </button>
-          <button class="filter-btn" data-filter="dps" title="Только ДД">
+          <button class="filter-btn" data-filter="dps" data-i18n-title="filters.dpsOnly" title="Только ДД">
             <svg class="role-filter-icon" width="18" height="18" viewBox="0 0 24 24">
               <use href="./public/icons/roles/damage.svg#icon"></use>
             </svg>
             <img class="role-filter-img" src="./public/icons/roles/damage.svg" alt="DPS" width="18" height="18">
           </button>
-          <button class="filter-btn" data-filter="support" title="Только саппорты">
+          <button class="filter-btn" data-filter="support" data-i18n-title="filters.supportOnly" title="Только саппорты">
             <svg class="role-filter-icon" width="18" height="18" viewBox="0 0 24 24">
               <use href="./public/icons/roles/support.svg#icon"></use>
             </svg>
@@ -408,7 +413,7 @@
 
       <div id="loading-state" class="state-container" hidden>
         <div class="loader"></div>
-        <p>Loading data...</p>
+        <p data-i18n="status.loading">Loading data...</p>
       </div>
 
       <div id="error-state" class="state-container" hidden>
@@ -416,23 +421,23 @@
         <p id="error-message"></p>
         <div id="error-instructions" class="error-instructions" hidden>
           <div class="instruction-box">
-            <h3>Как опубликовать Google Sheet</h3>
+            <h3 data-i18n="errors.publishInstructions">Как опубликовать Google Sheet</h3>
             <ol>
-              <li>Откройте ваш Google Sheet</li>
-              <li>Нажмите кнопку <strong>Поделиться</strong> (справа вверху)</li>
-              <li>В настройках доступа выберите <strong>Все, у кого есть ссылка</strong> с правами <strong>Читатель</strong></li>
-              <li>Перейдите в <strong>Файл → Поделиться → Опубликовать в интернете</strong></li>
-              <li>Выберите нужный лист для публикации</li>
-              <li>Нажмите <strong>Опубликовать</strong></li>
-              <li>Вернитесь сюда и нажмите "Повторить"</li>
+              <li data-i18n="errors.publishStep1">Откройте ваш Google Sheet</li>
+              <li data-i18n="errors.publishStep2" data-i18n-html>Нажмите кнопку <strong>Поделиться</strong> (справа вверху)</li>
+              <li data-i18n="errors.publishStep3" data-i18n-html>В настройках доступа выберите <strong>Все, у кого есть ссылка</strong> с правами <strong>Читатель</strong></li>
+              <li data-i18n="errors.publishStep4" data-i18n-html>Перейдите в <strong>Файл → Поделиться → Опубликовать в интернете</strong></li>
+              <li data-i18n="errors.publishStep5">Выберите нужный лист для публикации</li>
+              <li data-i18n="errors.publishStep6" data-i18n-html>Нажмите <strong>Опубликовать</strong></li>
+              <li data-i18n="errors.publishStep7">Вернитесь сюда и нажмите "Повторить"</li>
             </ol>
-            <p class="instruction-note">
+            <p class="instruction-note" data-i18n="errors.publishNote" data-i18n-html>
               <strong>Важно:</strong> "Доступ по ссылке" — это не то же самое, что "Опубликовать в интернете". 
               Нужно именно опубликовать через меню Файл.
             </p>
           </div>
         </div>
-        <button id="retry-btn" class="btn btn-primary">Повторить</button>
+        <button id="retry-btn" class="btn btn-primary" data-i18n="errors.retry">Повторить</button>
       </div>
 
       <!-- Players Tab -->
@@ -450,10 +455,10 @@
 
           <!-- Right: Player Details Panel -->
           <div class="players-details-panel">
-            <h3 class="panel-title">Информация об игроке</h3>
+            <h3 class="panel-title" data-i18n="players.panelTitle">Информация об игроке</h3>
             <div id="player-details-content">
               <div class="player-details-empty">
-                <p>Игрок не выбран</p>
+                <p data-i18n="players.notSelected">Игрок не выбран</p>
               </div>
             </div>
           </div>
@@ -465,11 +470,11 @@
         <div id="teams-validation-error" class="validation-error-box" hidden>
           <div class="error-header">
             <span class="error-icon-small">⚠️</span>
-            <strong>Ошибка формата данных</strong>
+            <strong data-i18n="teams.errorTitle">Ошибка формата данных</strong>
           </div>
           <pre id="teams-error-message"></pre>
           <details class="schema-help">
-            <summary>Ожидаемый формат таблицы</summary>
+            <summary data-i18n="teams.schemaHelp">Ожидаемый формат таблицы</summary>
             <pre id="schema-docs"></pre>
           </details>
         </div>
@@ -481,10 +486,10 @@
 
           <!-- Right: Player Details Panel -->
           <div class="teams-details-panel">
-            <h3 class="panel-title">Информация об игроке</h3>
+            <h3 class="panel-title" data-i18n="players.panelTitle">Информация об игроке</h3>
             <div id="teams-player-details-content">
               <div class="player-details-empty">
-                <p>Игрок не выбран</p>
+                <p data-i18n="players.notSelected">Игрок не выбран</p>
               </div>
             </div>
           </div>
@@ -496,7 +501,7 @@
       <div class="status-bar">
         <div class="status-item">
           <span id="polling-indicator" class="indicator"></span>
-          <span id="last-update">Not updated yet</span>
+          <span id="last-update" data-i18n="status.notUpdated">Not updated yet</span>
         </div>
         <div id="error-indicator" class="status-item error" hidden>
           <span class="indicator error"></span>
