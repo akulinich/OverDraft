@@ -751,6 +751,28 @@ async function init() {
     settingsBuildEl.textContent = getBuildInfo();
   }
   
+  // Check for import configuration from URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const configParam = urlParams.get('config');
+  if (configParam) {
+    const { importConfiguration } = await import('./utils/export.js');
+    const result = importConfiguration(configParam);
+    
+    if (result.success) {
+      // Remove config parameter from URL without reload
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('config');
+      window.history.replaceState({}, '', newUrl.toString());
+      
+      if (config.isDev) {
+        console.log('[OverDraft] Configuration imported from URL');
+      }
+    } else {
+      console.error('[OverDraft] Failed to import configuration:', result.error);
+      alert(`Не удалось импортировать конфигурацию: ${result.error || 'Неизвестная ошибка'}`);
+    }
+  }
+  
   // Initialize state from localStorage
   store.initializeState();
   

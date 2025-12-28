@@ -8,6 +8,7 @@ import { loadLocalCSV, getCSVText, encodeCSVForStorage } from '../api/local.js';
 import * as store from '../state/store.js';
 import * as renderer from './renderer.js';
 import { validateTeamsDataWithConfig } from '../validation/schema.js';
+import { exportConfiguration, isExportAvailable } from '../utils/export.js';
 
 /** @type {'google'|'local'} Current source type in setup modal */
 let currentSourceType = 'google';
@@ -774,6 +775,63 @@ function setupSettingsModal() {
 }
 
 /**
+ * Sets up export button
+ */
+function setupExportButton() {
+  const exportBtn = document.getElementById('export-btn');
+  
+  if (!exportBtn) return;
+  
+  // Update button visibility based on export availability
+  function updateExportButtonVisibility() {
+    const available = isExportAvailable();
+    exportBtn.hidden = !available;
+  }
+  
+  // Initial update
+  updateExportButtonVisibility();
+  
+  // Update on state changes
+  const unsubscribe = store.subscribe((state, changedKey) => {
+    if (changedKey === 'configuredSheets' || changedKey === 'teamsSheet' || changedKey === 'init') {
+      updateExportButtonVisibility();
+    }
+  });
+  
+  // Store unsubscribe function (could be used for cleanup if needed)
+  // For now, we keep the subscription active for the app lifetime
+  
+  // Export button click handler
+  exportBtn.addEventListener('click', async () => {
+    const url = exportConfiguration();
+    
+    if (!url) {
+      alert('Экспорт недоступен. Убедитесь, что используются Google Таблицы, а не локальные CSV файлы.');
+      return;
+    }
+    
+    try {
+      // Copy to clipboard
+      await navigator.clipboard.writeText(url);
+      
+      // Show success notification
+      const originalTitle = exportBtn.getAttribute('title') || '';
+      exportBtn.setAttribute('title', 'Ссылка скопирована!');
+      exportBtn.style.opacity = '0.7';
+      
+      setTimeout(() => {
+        exportBtn.setAttribute('title', originalTitle);
+        exportBtn.style.opacity = '1';
+      }, 2000);
+    } catch (err) {
+      console.error('[Export] Failed to copy to clipboard:', err);
+      // Fallback: show URL in prompt
+      prompt('Скопируйте эту ссылку:', url);
+    }
+  });
+}
+
+/**
  * Sets up retry button
  */
 function setupRetryButton() {
@@ -1108,6 +1166,7 @@ export function initializeEvents(callbacks) {
   setupUrlValidation();
   setupSheetForm();
   setupSettingsModal();
+  setupExportButton();
   setupRetryButton();
   setupModalBackdrops();
   setupTabs(callbacks.onTabChange);
