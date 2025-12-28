@@ -12,6 +12,7 @@
 | 2 | Real-time data updates | Polling with 1-second interval |
 | 3 | Persist configuration across page reloads | localStorage |
 | 4 | Host on GitHub Pages | Static SPA without backend |
+| 5 | Multi-language support | i18n module with RU/EN translations |
 
 ### Constraints
 
@@ -56,15 +57,25 @@ src/
 ├── index.html              # Entry point
 ├── styles/
 │   └── main.css            # Application styles
+├── public/
+│   ├── icons/              # Hero, role, rank icons
+│   └── locales/            # Translation files
+│       ├── en.json         # English translations
+│       └── ru.json         # Russian translations
 ├── js/
 │   ├── main.js             # Application initialization
 │   ├── config.js           # Configuration (intervals, limits)
+│   ├── version.js          # Version info
 │   ├── api/
-│   │   └── sheets.js       # gviz API client
+│   │   ├── sheets.js       # gviz API client
+│   │   ├── local.js        # Local CSV file handling
+│   │   └── overfast.js     # Hero/role data loader
 │   ├── storage/
 │   │   └── persistence.js  # localStorage wrapper
 │   ├── state/
 │   │   └── store.js        # In-memory state management
+│   ├── i18n/
+│   │   └── index.js        # Internationalization module
 │   ├── ui/
 │   │   ├── components.js   # UI components
 │   │   ├── renderer.js     # DOM rendering
@@ -73,9 +84,13 @@ src/
 │   │   └── schema.js       # Teams data schema validation
 │   └── utils/
 │       ├── parser.js       # Sheet URL parsing
-│       └── polling.js      # Polling manager
-└── assets/
-    └── ...                 # Icons, fonts
+│       ├── polling.js      # Polling manager
+│       ├── csv.js          # CSV parsing utilities
+│       ├── ranks.js        # Rank badge utilities
+│       └── export.js       # Configuration export
+└── tests/
+    ├── unit/               # Unit tests
+    └── integration/        # Integration tests
 ```
 
 ### 3.2 Components
@@ -133,12 +148,43 @@ interface AppState {
 const STORAGE_KEYS = {
   CONFIGURED_SHEETS: 'overdraft_configured_sheets',
   TEAMS_SHEET: 'overdraft_teams_sheet',
-  SETTINGS: 'overdraft_settings'
+  SETTINGS: 'overdraft_settings',
+  COLUMN_MAPPINGS: 'overdraft_column_mappings',
+  TEAMS_LAYOUT: 'overdraft_teams_layout',
+  LOCAL_CSV_DATA: 'overdraft_local_csv_data',
+  LANGUAGE: 'overdraft_language'
 };
 
 interface StoredSettings {
   pollingInterval: number;
   theme: 'light' | 'dark';
+}
+```
+
+#### Internationalization Module (`i18n/index.js`)
+
+```javascript
+// i18n module interface
+interface I18nModule {
+  init(): Promise<void>;                    // Initialize with stored/detected language
+  t(key: string, params?: object): string;  // Get translated string
+  getLanguage(): 'ru' | 'en';               // Get current language
+  setLanguage(lang: 'ru' | 'en'): Promise<void>;  // Change language
+  toggleLanguage(): Promise<void>;          // Switch between RU/EN
+  translatePage(): void;                    // Translate all data-i18n elements
+  subscribe(callback: Function): Function;  // Subscribe to language changes
+}
+```
+
+**Translation file structure (`public/locales/*.json`):**
+```javascript
+{
+  "app": { "title": "OverDraft — Player Pool" },
+  "header": { "players": "Players", "teams": "Teams" },
+  "settings": { "title": "Settings", ... },
+  "errors": { "notFound": "Not found", ... },
+  "columns": { "nickname": "Nickname", "role": "Role", ... },
+  "status": { "updated": "Updated {time}", ... }
 }
 ```
 
@@ -149,29 +195,37 @@ interface StoredSettings {
 ### 4.1 Application Load
 
 ```
-┌──────────┐     ┌────────────┐     ┌─────────────┐
-│  Page    │────►│  Load      │────►│  Restore    │
-│  Load    │     │  Config    │     │  from       │
-│          │     │            │     │  localStorage│
-└──────────┘     └────────────┘     └──────┬──────┘
-                                           │
-                      ┌────────────────────┴────────────────────┐
-                      │                                         │
-                      ▼                                         ▼
-               [sheets exist?]                           [no sheets]
-                      │                                         │
-                      ▼                                         ▼
-              ┌─────────────┐                          ┌─────────────┐
-              │  Fetch      │                          │  Show       │
-              │  Sheet Data │                          │  Setup UI   │
-              └──────┬──────┘                          │  (required) │
-                     │                                 └─────────────┘
-                     ▼
-              ┌─────────────┐     ┌─────────────┐
-              │  Render     │────►│  Start      │
-              │  Visualizer │     │  Polling    │
-              └─────────────┘     └─────────────┘
+┌──────────┐     ┌────────────┐     ┌─────────────┐     ┌─────────────┐
+│  Page    │────►│  Init      │────►│  Restore    │────►│  Load       │
+│  Load    │     │  i18n      │     │  from       │     │  Icons      │
+│          │     │            │     │  localStorage│     │  Data       │
+└──────────┘     └────────────┘     └──────┬──────┘     └──────┬──────┘
+                                           │                    │
+                      ┌────────────────────┴────────────────────┘
+                      │
+                      ▼
+               [sheets exist?]
+                      │
+         ┌────────────┴────────────┐
+         ▼                         ▼
+  ┌─────────────┐          ┌─────────────┐
+  │  Fetch      │          │  Show       │
+  │  Sheet Data │          │  Setup UI   │
+  └──────┬──────┘          │  (required) │
+         │                 └─────────────┘
+         ▼
+  ┌─────────────┐     ┌─────────────┐
+  │  Render     │────►│  Start      │
+  │  Visualizer │     │  Polling    │
+  └─────────────┘     └─────────────┘
 ```
+
+**i18n Initialization:**
+1. Load stored language preference from localStorage
+2. If not stored, detect from `navigator.language`
+3. Default to Russian if language not supported
+4. Load translation JSON file
+5. Translate all elements with `data-i18n` attributes
 
 **Constraint:** At least one sheet must be configured. If none exists, the setup UI is shown as a blocking modal.
 
@@ -332,8 +386,11 @@ const csv = await response.text();
 {
   "version": 1,
   "pollingInterval": 1000,
-  "theme": "light"
+  "theme": "dark"
 }
+
+// Key: overdraft_language
+"ru"  // or "en" — stored as plain string
 ```
 
 ### 6.2 Migration Strategy
@@ -362,40 +419,61 @@ function migrateStorage(stored) {
 ```
 App
 ├── SetupModal (blocking if no sheets configured)
+│   ├── SourceTypeToggle (Google Sheets / Local CSV)
 │   ├── PlayersSheetSection
-│   │   ├── URLInput
-│   │   ├── AliasInput
+│   │   ├── URLInput (for Google Sheets)
+│   │   ├── FileInput (for Local CSV)
 │   │   └── ValidationFeedback
 │   ├── TeamsSheetSection (optional)
-│   │   ├── URLInput
+│   │   ├── URLInput / FileInput
 │   │   └── ValidationFeedback
 │   └── ConfirmButton
 ├── Header
+│   ├── Logo
+│   ├── ExportButton
+│   ├── LanguageButton (RU/EN toggle)
 │   └── SettingsButton
 ├── TabsNav (Players / Teams)
+├── FilterButtons (available, tank, dps, support)
 ├── DataDisplay (Players tab)
-│   └── TableView
-│       ├── TableHeader
-│       └── TableBody
+│   ├── PlayersTable
+│   │   ├── TableHeader (sortable columns)
+│   │   └── TableBody (with role/hero icons, rank badges)
+│   └── PlayerDetailsPanel
+│       ├── RatingSection
+│       ├── RoleSection
+│       ├── HeroesSection
+│       └── AllDataSection
 ├── TeamsDisplay (Teams tab)
 │   ├── ValidationErrorBox (if schema validation fails)
 │   │   ├── ErrorMessage
 │   │   └── SchemaDocumentation
-│   └── TeamsGrid
-│       └── TeamCard (×N)
-│           ├── TeamHeader (name, avg rating)
-│           └── PlayerList
-│               └── PlayerRow (role, nickname, rating)
+│   ├── TeamsGrid
+│   │   └── TeamCard (×N)
+│   │       ├── TeamHeader (name, avg rating)
+│   │       └── PlayerList
+│   │           └── PlayerRow (role, nickname, rating, rank badge)
+│   └── TeamsPlayerDetailsPanel
 ├── StatusBar
-│   ├── LastUpdateTime
 │   ├── PollingIndicator
-│   └── ErrorMessages
-└── SettingsModal
-    ├── PlayersSheetInfo
-    ├── TeamsSheetInfo
-    ├── ChangeButton
-    ├── PollingIntervalSlider
-    └── ThemeToggle
+│   ├── LastUpdateTime
+│   ├── ErrorIndicator
+│   └── VersionInfo
+├── SettingsModal
+│   ├── PlayersSheetInfo
+│   ├── TeamsSheetInfo
+│   ├── TeamsLayoutButton
+│   ├── ChangeButton
+│   ├── RefreshButton
+│   ├── PollingIntervalSlider
+│   └── ThemeToggle
+├── ColumnMappingModal
+│   ├── MappingTable
+│   └── ConfirmButton
+└── TeamsLayoutModal
+    ├── LayoutParameters (8 inputs)
+    ├── TablePreview
+    └── ConfirmButton
 ```
 
 **Page structure:** TBD — may be single page with tabs, or multiple separate pages. Architecture supports both.
@@ -558,22 +636,27 @@ No environment secrets required — all configuration is client-side.
 
 ## 13. Development Roadmap
 
-### Phase 1: MVP
-- [ ] Basic UI for adding sheets (URL input + validation)
-- [ ] gviz API integration
-- [ ] localStorage persistence
-- [ ] 1-second polling
+### Phase 1: MVP ✅
+- [x] Basic UI for adding sheets (URL input + validation)
+- [x] gviz API integration
+- [x] localStorage persistence
+- [x] 1-second polling
 
-### Phase 2: Polish
-- [ ] Enhanced table visualization
-- [ ] Error handling & recovery
-- [ ] Settings panel
-- [ ] Responsive design
+### Phase 2: Polish ✅
+- [x] Enhanced table visualization (role icons, rank badges, hero icons)
+- [x] Error handling & recovery
+- [x] Settings panel
+- [x] Responsive design
+- [x] Teams data visualization
+- [x] Column mapping configuration
+- [x] Teams layout configuration
 
-### Phase 3: Advanced
-- [ ] Virtual scrolling
-- [ ] Data filtering and search
-- [ ] Export functionality
+### Phase 3: Advanced (In Progress)
+- [x] Data filtering (by role, availability)
+- [x] Export functionality (URL-based config sharing)
+- [x] Local CSV file support
+- [x] **Internationalization (RU/EN)**
+- [ ] Virtual scrolling (for large datasets)
 - [ ] PWA support
 - [ ] Cloudflare Worker caching (if needed)
 
@@ -587,16 +670,31 @@ No environment secrets required — all configuration is client-side.
 - State management logic
 - URL parsing utilities (extract spreadsheetId + gid)
 - localStorage wrapper
+- CSV parsing
+- Rank badge calculations
+- Configuration export/import
+- **i18n module** (`t()` function, language switching, interpolation)
+- **Translation file integrity** (key consistency, no empty values, parameter matching)
 
 ### 14.2 Integration Tests
 
 - Full data flow (add sheet → fetch → display)
 - Persistence across simulated "reload"
 - Error scenarios (unpublished sheet, network failure)
+- Local CSV file handling
+- Column mapping persistence
+- Teams layout configuration
+- **Language persistence** (save/load language preference)
 
 ### 14.3 E2E Tests (optional)
 
 - Playwright for critical user flows
+
+### 14.4 Test Coverage
+
+Current test suite: **255 tests** across 12 test files
+- `tests/unit/` — 7 test files (i18n, translations, csv, parser, schema, ranks, export)
+- `tests/integration/` — 5 test files (store, persistence, local-api, realistic-data, advanced-layouts)
 
 ---
 
@@ -732,5 +830,81 @@ For the app to access sheet data without authentication:
 
 ---
 
-_Document version: 1.2_  
-_Last updated: 2025-12-26_
+## Appendix C: Internationalization (i18n)
+
+The application supports multiple languages with a custom i18n implementation.
+
+### Supported Languages
+
+| Code | Language | Default |
+|------|----------|---------|
+| `ru` | Russian  | Yes (fallback) |
+| `en` | English  | No |
+
+### Language Detection Priority
+
+1. Stored preference in localStorage (`overdraft_language`)
+2. Browser language (`navigator.language`)
+3. Default: Russian
+
+### Translation Approach
+
+**Static HTML text:** Uses `data-i18n` attributes
+
+```html
+<h2 data-i18n="settings.title">Settings</h2>
+<button data-i18n-title="export.tooltip" title="Export">...</button>
+<input data-i18n-placeholder="setup.urlPlaceholder" placeholder="...">
+```
+
+**Dynamic JS text:** Uses `t()` function
+
+```javascript
+import { t } from './i18n/index.js';
+element.textContent = t('settings.title');
+t('status.updated', { time: '5s ago' });  // With interpolation
+```
+
+### Translation File Structure
+
+Files located in `public/locales/{lang}.json`:
+
+```javascript
+{
+  "app": { ... },           // App-wide strings
+  "header": { ... },        // Header/tabs
+  "setup": { ... },         // Setup modal
+  "settings": { ... },      // Settings modal
+  "columnMapping": { ... }, // Column mapping modal
+  "teamsLayout": { ... },   // Teams layout modal
+  "filters": { ... },       // Filter buttons
+  "players": { ... },       // Player details panel
+  "teams": { ... },         // Teams tab
+  "roles": { ... },         // Role names
+  "columns": { ... },       // Table column headers
+  "status": { ... },        // Status bar messages
+  "errors": { ... },        // Error messages
+  "validation": { ... },    // Form validation messages
+  "export": { ... },        // Export functionality
+  "language": { ... }       // Language codes
+}
+```
+
+### Language Toggle
+
+- Located in header between Export and Settings buttons
+- Displays current language code (RU/EN)
+- Click toggles between languages
+- All UI updates immediately without page reload
+
+### Adding New Languages
+
+1. Create `public/locales/{code}.json` with all keys
+2. Update `detectBrowserLanguage()` in `i18n/index.js`
+3. Update `setLanguage()` validation
+4. Add language code to UI toggle
+
+---
+
+_Document version: 1.3_  
+_Last updated: 2025-12-27_
