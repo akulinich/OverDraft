@@ -108,6 +108,84 @@ describe('validateTeamsDataWithConfig', () => {
     expect(result.data?.teams.length).toBe(1);
     expect(result.data?.teams[0].playerNicknames.length).toBe(0);
   });
+
+  it('treats #N/A and other spreadsheet errors as empty cells', () => {
+    // Simulates real Google Sheets data with formula errors
+    const allRows = [
+      ['', '', '', '', '', '', '', '', '', ''],                           // Row 1: empty
+      ['', 'Легенды', '', '', '', 'GRLC', '', '', '', ''],                // Row 2: team names
+      ['1', '', '', '', '', '2', '', '', '', ''],                         // Row 3: team numbers
+      ['Танки', '#N/A', '#N/A', '2340', '', 'Танки', '#N/A', '#N/A', '2760', ''],  // Row 4
+      ['ДД', 'pokeda', '3700', '', '', 'ДД', 'AllRayDi', '3700', '', ''],  // Row 5
+      ['', '', '#N/A', '', '', '', 'EL25', '2400', '', ''],                // Row 6
+      ['Сапы', 'EVoid', '4500', '', '', 'Сапы', 'k1lljet', '4000', '', ''], // Row 7
+      ['', 'walkingde10th', '3500', '', '', '', 'lifeisprison', '3700', '', ''] // Row 8
+    ];
+
+    const config = {
+      teamsPerRow: 2,
+      columnsPerTeam: 4,
+      separatorColumns: 1,
+      rowsBetweenBlocks: 2,
+      playersPerTeam: 5,
+      headerRows: 2,
+      startRow: 1,  // Skip first empty row
+      startCol: 0
+    };
+
+    const result = validateTeamsDataWithConfig(allRows, config);
+    
+    expect(result.valid).toBe(true);
+    expect(result.data?.teams.length).toBe(2);
+    
+    // Team 1: "Легенды" with players (excluding #N/A)
+    expect(result.data?.teams[0].name).toBe('Легенды');
+    expect(result.data?.teams[0].teamNumber).toBe(1);
+    expect(result.data?.teams[0].playerNicknames).not.toContain('#N/A');
+    expect(result.data?.teams[0].playerNicknames).toContain('pokeda');
+    expect(result.data?.teams[0].playerNicknames).toContain('EVoid');
+    expect(result.data?.teams[0].playerNicknames).toContain('walkingde10th');
+    
+    // Team 2: "GRLC" with players (excluding #N/A)
+    expect(result.data?.teams[1].name).toBe('GRLC');
+    expect(result.data?.teams[1].teamNumber).toBe(2);
+    expect(result.data?.teams[1].playerNicknames).not.toContain('#N/A');
+    expect(result.data?.teams[1].playerNicknames).toContain('AllRayDi');
+    expect(result.data?.teams[1].playerNicknames).toContain('EL25');
+    expect(result.data?.teams[1].playerNicknames).toContain('k1lljet');
+    expect(result.data?.teams[1].playerNicknames).toContain('lifeisprison');
+  });
+
+  it('treats various spreadsheet error values as empty', () => {
+    const allRows = [
+      ['', 'Team', '', ''],
+      ['1', '', '', ''],
+      ['', '#N/A', '', ''],
+      ['', '#REF!', '', ''],
+      ['', '#VALUE!', '', ''],
+      ['', '#DIV/0!', '', ''],
+      ['', 'RealPlayer', '', '']
+    ];
+
+    const config = {
+      teamsPerRow: 1,
+      columnsPerTeam: 4,
+      separatorColumns: 0,
+      rowsBetweenBlocks: 0,
+      playersPerTeam: 5,
+      headerRows: 2,
+      startRow: 0,
+      startCol: 0
+    };
+
+    const result = validateTeamsDataWithConfig(allRows, config);
+    
+    expect(result.data?.teams[0].playerNicknames).toEqual(['RealPlayer']);
+    expect(result.data?.teams[0].playerNicknames).not.toContain('#N/A');
+    expect(result.data?.teams[0].playerNicknames).not.toContain('#REF!');
+    expect(result.data?.teams[0].playerNicknames).not.toContain('#VALUE!');
+    expect(result.data?.teams[0].playerNicknames).not.toContain('#DIV/0!');
+  });
 });
 
 describe('validateTeamsData (legacy wrapper)', () => {

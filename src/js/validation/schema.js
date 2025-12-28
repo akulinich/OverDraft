@@ -94,6 +94,11 @@ function parseRating(value) {
 }
 
 /**
+ * Spreadsheet error values to treat as empty
+ */
+const SPREADSHEET_ERRORS = ['#N/A', '#REF!', '#VALUE!', '#DIV/0!', '#NAME?', '#NULL!', '#NUM!', '#ERROR!'];
+
+/**
  * @param {string[][]} rows 
  * @param {number} row 
  * @param {number} col 
@@ -102,7 +107,10 @@ function parseRating(value) {
 function getCell(rows, row, col) {
   if (row < 0 || row >= rows.length) return '';
   if (!rows[row] || col < 0 || col >= rows[row].length) return '';
-  return (rows[row][col] || '').trim();
+  const value = (rows[row][col] || '').trim();
+  // Treat spreadsheet errors as empty cells
+  if (SPREADSHEET_ERRORS.includes(value.toUpperCase())) return '';
+  return value;
 }
 
 /**
