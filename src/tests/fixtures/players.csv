@@ -1,0 +1,8 @@
+Ник,Роль,Рейтинг,Герои
+TestTank1,Танк,3500,"Reinhardt, Winston"
+TestDPS1,ДД,4200,"Tracer, Genji"
+TestSupport1,Сапы,3800,"Ana, Mercy"
+TestTank2,Танк,2900,Orisa
+TestDPS2,ДД,3100,Soldier-76
+TestSupport2,Support,3400,Lucio
+

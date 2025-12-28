@@ -10,10 +10,19 @@
     "version:minor": "npm version minor --no-git-tag-version",
     "version:major": "npm version major --no-git-tag-version",
     "preview": "vite preview",
-    "lint": "eslint src/js --ext .js"
+    "lint": "eslint js --ext .js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui",
+    "prepare": "cd .. && git config core.hooksPath .husky || true"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.16",
+    "eslint": "^8.57.0",
+    "husky": "^9.1.7",
+    "jsdom": "^27.4.0",
     "vite": "^5.4.11",
-    "eslint": "^8.57.0"
+    "vitest": "^4.0.16"
   }
 }
