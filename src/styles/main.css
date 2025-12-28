@@ -787,6 +787,28 @@ body::before {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
+  table-layout: fixed;
+}
+
+/* Fixed column widths for players table */
+#data-table .col-nickname {
+  width: 35%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#data-table .col-role {
+  width: 15%;
+}
+
+#data-table .col-rating {
+  width: 20%;
+}
+
+#data-table .col-heroes {
+  width: 30%;
+  overflow: hidden;
 }
 
 #data-table th,

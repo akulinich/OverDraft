@@ -164,6 +164,11 @@ function isCommentColumn(header) {
 function renderCell(value, header, colIndex, columnKey) {
   const td = createElement('td');
   
+  // Add column-specific class for fixed widths
+  if (columnKey) {
+    td.classList.add(`col-${columnKey}`);
+  }
+  
   // Skip icon rendering for comment columns
   if (isCommentColumn(header)) {
     td.textContent = value;
@@ -199,6 +204,11 @@ function renderCell(value, header, colIndex, columnKey) {
     const heroIcons = createHeroIconsContainer(value, { size: 'md', maxIcons: 5 });
     td.appendChild(heroIcons);
     return td;
+  }
+  
+  // Nickname column
+  if (columnKey === 'nickname') {
+    td.classList.add('cell-nickname');
   }
   
   // Default: escape and display text
@@ -367,7 +377,7 @@ export function renderPlayersTable(headers, data, teams = []) {
     const tr = createElement('tr');
     
     for (const col of mandatoryCols) {
-      const th = createElement('th', {}, escapeHtml(col.header));
+      const th = createElement('th', { className: `col-${col.key}` }, escapeHtml(col.header));
       tr.appendChild(th);
     }
     
