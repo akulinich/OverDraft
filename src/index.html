@@ -106,6 +106,15 @@
           <div class="settings-section" id="teams-sheet-section">
             <h3>Таблица команд</h3>
             <div id="current-teams-info" class="sheet-info">Не настроено</div>
+            <button id="configure-teams-layout" class="btn btn-secondary btn-sm" hidden>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                <rect x="3" y="3" width="7" height="7"/>
+                <rect x="14" y="3" width="7" height="7"/>
+                <rect x="3" y="14" width="7" height="7"/>
+                <rect x="14" y="14" width="7" height="7"/>
+              </svg>
+              Настроить разметку
+            </button>
           </div>
           <div class="settings-section">
             <button id="change-sheet" class="btn btn-secondary">Изменить таблицы</button>
@@ -168,6 +177,85 @@
         </div>
         <div class="modal-footer">
           <button id="confirm-column-mapping" class="btn btn-primary" disabled>
+            <span class="btn-text">Подтвердить</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Teams Layout Configuration Modal -->
+    <div id="teams-layout-modal" class="modal" hidden>
+      <div class="modal-backdrop"></div>
+      <div class="modal-content modal-content-xl">
+        <div class="modal-header">
+          <h2>Настройка формата таблицы команд</h2>
+          <button id="close-teams-layout" class="btn-icon" aria-label="Close">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-description">
+            Не удалось автоматически распознать структуру таблицы команд.
+            Настройте параметры, чтобы соответствовать вашей таблице:
+          </p>
+          
+          <!-- Layout Parameters -->
+          <div class="teams-layout-params">
+            <div class="param-group">
+              <label for="param-start-row">Отступ сверху (строк)</label>
+              <input type="number" id="param-start-row" min="0" max="50" value="0">
+            </div>
+            <div class="param-group">
+              <label for="param-start-col">Отступ слева (колонок)</label>
+              <input type="number" id="param-start-col" min="0" max="50" value="0">
+            </div>
+            <div class="param-group">
+              <label for="param-teams-per-row">Команд в ряду</label>
+              <input type="number" id="param-teams-per-row" min="1" max="10" value="3">
+            </div>
+            <div class="param-group">
+              <label for="param-columns-per-team">Колонок данных на команду</label>
+              <input type="number" id="param-columns-per-team" min="2" max="10" value="4">
+            </div>
+            <div class="param-group">
+              <label for="param-separator-columns">Пустых колонок между командами</label>
+              <input type="number" id="param-separator-columns" min="0" max="5" value="1">
+            </div>
+            <div class="param-group">
+              <label for="param-header-rows">Строк заголовка (имя + номер)</label>
+              <input type="number" id="param-header-rows" min="1" max="5" value="2">
+            </div>
+            <div class="param-group">
+              <label for="param-players-per-team">Игроков в команде</label>
+              <input type="number" id="param-players-per-team" min="1" max="15" value="5">
+            </div>
+            <div class="param-group">
+              <label for="param-rows-between-blocks">Пустых строк между блоками</label>
+              <input type="number" id="param-rows-between-blocks" min="0" max="5" value="1">
+            </div>
+          </div>
+          
+          <!-- Table Preview with Grid -->
+          <div class="teams-layout-preview-section">
+            <h3>Превью таблицы</h3>
+            <div class="teams-layout-preview-wrapper">
+              <div id="teams-layout-preview" class="teams-layout-preview">
+                <!-- Preview table will be rendered here -->
+              </div>
+            </div>
+          </div>
+          
+          <!-- Parse Error Display -->
+          <div id="teams-layout-error" class="teams-layout-error" hidden>
+            <span class="error-icon">⚠️</span>
+            <span id="teams-layout-error-message"></span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="cancel-teams-layout" class="btn btn-secondary">Отмена</button>
+          <button id="confirm-teams-layout" class="btn btn-primary" disabled>
             <span class="btn-text">Подтвердить</span>
           </button>
         </div>

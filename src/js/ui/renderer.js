@@ -765,8 +765,9 @@ export function showTab(tab) {
  * Renders teams data with validation
  * @param {string[]} headers 
  * @param {string[][]} data 
+ * @param {import('../storage/persistence.js').TeamsLayoutConfig} [layoutConfig] - Optional layout config
  */
-export function renderTeamsView(headers, data) {
+export async function renderTeamsView(headers, data, layoutConfig) {
   const container = document.getElementById('teams-container');
   const errorBox = document.getElementById('teams-validation-error');
   const errorMessage = document.getElementById('teams-error-message');
@@ -774,8 +775,8 @@ export function renderTeamsView(headers, data) {
   
   if (!container) return;
   
-  // Validate data against schema
-  const validationResult = validateTeamsData(headers, data);
+  // Validate data against schema with provided config
+  const validationResult = validateTeamsData(headers, data, layoutConfig);
   
   if (!validationResult.valid) {
     // Show validation error
@@ -802,8 +803,11 @@ export function renderTeamsView(headers, data) {
   // Render teams grid
   container.innerHTML = '';
   
+  // Import getPlayerByNickname dynamically to avoid circular dependency
+  const { getPlayerByNickname } = await import('../state/store.js');
+  
   teamsData.teams.forEach(team => {
-    const card = createTeamCard(team);
+    const card = createTeamCard(team, getPlayerByNickname);
     container.appendChild(card);
   });
 }
@@ -811,9 +815,10 @@ export function renderTeamsView(headers, data) {
 /**
  * Creates a team card element
  * @param {import('../validation/schema.js').Team} team 
+ * @param {function(string): import('../state/store.js').Player|null} getPlayerFn - Function to get player by nickname
  * @returns {HTMLElement}
  */
-function createTeamCard(team) {
+function createTeamCard(team, getPlayerFn) {
   const card = createElement('div', { className: 'team-card' });
   
   // Header
@@ -821,10 +826,20 @@ function createTeamCard(team) {
   const name = createElement('span', { className: 'team-name' }, team.name);
   header.appendChild(name);
   
-  if (team.avgRating) {
-    const rankBadge = createRankBadge(team.avgRating, { showNumber: true, size: 'sm' });
-    rankBadge.classList.add('team-rating');
-    header.appendChild(rankBadge);
+  // Calculate avg rating from players
+  const teamPlayers = team.playerNicknames
+    .map(nick => getPlayerFn(nick))
+    .filter(p => p !== null);
+  
+  if (teamPlayers.length > 0) {
+    const avgRating = Math.round(
+      teamPlayers.reduce((sum, p) => sum + (p.rating || 0), 0) / teamPlayers.length
+    );
+    if (avgRating > 0) {
+      const rankBadge = createRankBadge(avgRating, { showNumber: true, size: 'sm' });
+      rankBadge.classList.add('team-rating');
+      header.appendChild(rankBadge);
+    }
   }
   
   card.appendChild(header);
@@ -832,26 +847,40 @@ function createTeamCard(team) {
   // Players
   const playersContainer = createElement('div', { className: 'team-players' });
   
-  team.players.forEach(player => {
+  team.playerNicknames.forEach(nickname => {
+    const player = getPlayerFn(nickname);
+    
     const playerRow = createElement('div', { 
       className: 'team-player',
-      dataset: { nickname: player.nickname }
+      dataset: { nickname }
     });
     
-    // Role icon
-    const roleIcon = createRoleIcon(player.role, { size: 'sm' });
-    const roleWrapper = createElement('span', { className: `player-role ${player.role}` });
-    roleWrapper.appendChild(roleIcon);
-    playerRow.appendChild(roleWrapper);
-    
-    // Nickname
-    const nickname = createElement('span', { className: 'player-nickname' }, player.nickname);
-    playerRow.appendChild(nickname);
-    
-    // Rating with rank icon
-    const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'sm' });
-    rankBadge.classList.add('player-rating');
-    playerRow.appendChild(rankBadge);
+    if (player) {
+      // Role icon
+      const roleIcon = createRoleIcon(player.role, { size: 'sm' });
+      const roleWrapper = createElement('span', { className: `player-role ${player.role}` });
+      roleWrapper.appendChild(roleIcon);
+      playerRow.appendChild(roleWrapper);
+      
+      // Nickname
+      const nickEl = createElement('span', { className: 'player-nickname' }, player.nickname);
+      playerRow.appendChild(nickEl);
+      
+      // Rating with rank icon
+      const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'sm' });
+      rankBadge.classList.add('player-rating');
+      playerRow.appendChild(rankBadge);
+    } else {
+      // Player not found in players table
+      const unknownIcon = createElement('span', { className: 'player-role unknown' }, '?');
+      playerRow.appendChild(unknownIcon);
+      
+      const nickEl = createElement('span', { className: 'player-nickname player-unknown' }, nickname);
+      playerRow.appendChild(nickEl);
+      
+      const unknownRating = createElement('span', { className: 'player-rating unknown' }, '—');
+      playerRow.appendChild(unknownRating);
+    }
     
     playersContainer.appendChild(playerRow);
   });
@@ -1244,6 +1273,348 @@ export function hideColumnMappingModal() {
   const modal = document.getElementById('column-mapping-modal');
   if (modal) {
     modal.hidden = true;
+  }
+}
+
+
+/* ============================================================================
+   Teams Layout Configuration Modal
+   ============================================================================ */
+
+/**
+ * @typedef {import('../storage/persistence.js').TeamsLayoutConfig} TeamsLayoutConfig
+ * @typedef {import('../validation/schema.js').ParseError} ParseError
+ */
+
+/**
+ * Converts column index to Excel-style label (A, B, ..., Z, AA, AB, ...)
+ * @param {number} index - 0-based column index
+ * @returns {string}
+ */
+function getColumnLabel(index) {
+  let label = '';
+  let n = index;
+  while (n >= 0) {
+    label = String.fromCharCode(65 + (n % 26)) + label;
+    n = Math.floor(n / 26) - 1;
+  }
+  return label;
+}
+
+/**
+ * Calculates team block width
+ * @param {TeamsLayoutConfig} config
+ * @returns {number}
+ */
+function getBlockWidth(config) {
+  return config.columnsPerTeam + config.separatorColumns;
+}
+
+/**
+ * Calculates team block height (including separator rows)
+ * @param {TeamsLayoutConfig} config
+ * @returns {number}
+ */
+function getBlockHeight(config) {
+  return config.headerRows + config.playersPerTeam + config.rowsBetweenBlocks;
+}
+
+/**
+ * @typedef {Object} CellInfo
+ * @property {string} type - Cell type (header, role, nickname, rating, data, separator, offset)
+ * @property {number} teamIdx - Team index in row (-1 if in offset area)
+ * @property {number} blockRow - Block row index (0-based, -1 if in offset area)
+ * @property {boolean} isTeamTop - Is first row of team data
+ * @property {boolean} isTeamBottom - Is last row of team data
+ * @property {boolean} isTeamLeft - Is first column of team data
+ * @property {boolean} isTeamRight - Is last column of team data
+ * @property {boolean} isSeparator - Is in separator area
+ * @property {boolean} isOffset - Is in initial offset area
+ */
+
+/**
+ * Determines cell type for styling
+ * @param {number} row - Row index in the data
+ * @param {number} col - Column index in the data
+ * @param {TeamsLayoutConfig} config
+ * @returns {CellInfo}
+ */
+function getCellType(row, col, config) {
+  const startRow = config.startRow ?? 0;
+  const startCol = config.startCol ?? 0;
+  
+  // Check if in offset area
+  if (row < startRow || col < startCol) {
+    return {
+      type: 'offset',
+      teamIdx: -1,
+      blockRow: -1,
+      isTeamTop: false,
+      isTeamBottom: false,
+      isTeamLeft: false,
+      isTeamRight: false,
+      isSeparator: false,
+      isOffset: true
+    };
+  }
+  
+  // Adjust coordinates relative to start position
+  const adjRow = row - startRow;
+  const adjCol = col - startCol;
+  
+  const blockWidth = getBlockWidth(config);
+  const blockHeight = getBlockHeight(config);
+  
+  const teamIdx = Math.floor(adjCol / blockWidth);
+  const colInTeam = adjCol % blockWidth;
+  const blockRow = Math.floor(adjRow / blockHeight);
+  const rowInBlock = adjRow % blockHeight;
+  
+  // Check if beyond the configured teams per row (excess columns)
+  const isOutsideTeamGrid = teamIdx >= config.teamsPerRow;
+  
+  const teamDataHeight = config.headerRows + config.playersPerTeam;
+  
+  const isSeparatorCol = colInTeam >= config.columnsPerTeam || isOutsideTeamGrid;
+  const isSeparatorRow = rowInBlock >= teamDataHeight;
+  const isSeparator = isSeparatorCol || isSeparatorRow;
+  
+  // Team rectangle boundaries (within team data area only, and within teamsPerRow)
+  const isValidTeam = teamIdx < config.teamsPerRow;
+  const isTeamTop = rowInBlock === 0 && !isSeparator && isValidTeam;
+  const isTeamBottom = rowInBlock === teamDataHeight - 1 && !isSeparator && isValidTeam;
+  const isTeamLeft = colInTeam === 0 && !isSeparator && isValidTeam;
+  const isTeamRight = colInTeam === config.columnsPerTeam - 1 && !isSeparator && isValidTeam;
+  
+  let type = 'data';
+  
+  if (isSeparator) {
+    type = 'separator';
+  } else if (rowInBlock < config.headerRows) {
+    type = 'header';
+  } else {
+    // Player row - only nickname column (index 1) is important
+    // Other columns are ignored (data comes from players table)
+    if (colInTeam === 1) type = 'nickname';
+    else type = 'ignored';
+  }
+  
+  return {
+    type,
+    teamIdx,
+    blockRow,
+    isTeamTop,
+    isTeamBottom,
+    isTeamLeft,
+    isTeamRight,
+    isSeparator,
+    isOffset: false
+  };
+}
+
+/**
+ * Renders the teams layout preview table
+ * @param {string[][]} rawData - All rows from the sheet
+ * @param {TeamsLayoutConfig} config
+ * @param {ParseError|null} parseError
+ */
+export function renderTeamsLayoutPreview(rawData, config, parseError = null) {
+  const container = document.getElementById('teams-layout-preview');
+  if (!container) return;
+  
+  // Show all rows and columns - user can scroll
+  const rowsToShow = rawData.length;
+  const colsToShow = rawData.reduce((max, row) => Math.max(max, row?.length || 0), 0);
+  
+  const table = createElement('table', { className: 'teams-preview-table' });
+  
+  // Column headers row (A, B, C, ... AA, AB, ...)
+  const headerRow = createElement('tr');
+  headerRow.appendChild(createElement('td', { className: 'col-header row-number' }, ''));
+  for (let c = 0; c < colsToShow; c++) {
+    const colLabel = getColumnLabel(c);
+    headerRow.appendChild(createElement('td', { className: 'col-header' }, colLabel));
+  }
+  table.appendChild(headerRow);
+  
+  // Data rows
+  for (let r = 0; r < rowsToShow; r++) {
+    const tr = createElement('tr');
+    
+    // Row number
+    tr.appendChild(createElement('td', { className: 'row-number' }, String(r + 1)));
+    
+    const row = rawData[r] || [];
+    
+    for (let c = 0; c < colsToShow; c++) {
+      const value = row[c] || '';
+      const cellInfo = getCellType(r, c, config);
+      
+      const classes = [];
+      
+      // Cell type styling
+      if (cellInfo.isOffset) {
+        classes.push('offset-cell');
+      } else if (cellInfo.type === 'separator') {
+        classes.push('separator-cell');
+      } else if (cellInfo.type === 'header') {
+        classes.push('team-header-cell');
+      } else if (cellInfo.type === 'nickname') {
+        classes.push('player-nickname-cell');
+      } else if (cellInfo.type === 'ignored') {
+        classes.push('ignored-cell');
+      }
+      
+      if (!value.trim()) {
+        classes.push('empty-cell');
+      }
+      
+      // Team rectangle boundaries
+      if (cellInfo.isTeamTop) {
+        classes.push('team-border-top');
+      }
+      if (cellInfo.isTeamBottom) {
+        classes.push('team-border-bottom');
+      }
+      if (cellInfo.isTeamLeft) {
+        classes.push('team-border-left');
+      }
+      if (cellInfo.isTeamRight) {
+        classes.push('team-border-right');
+      }
+      
+      // Error highlighting
+      if (parseError && parseError.row === r && parseError.col === c) {
+        classes.push('error-cell');
+      }
+      
+      const td = createElement('td', { className: classes.join(' ') });
+      td.textContent = value.length > 15 ? value.substring(0, 12) + '...' : value;
+      td.title = value; // Full value on hover
+      tr.appendChild(td);
+    }
+    
+    table.appendChild(tr);
+  }
+  
+  container.innerHTML = '';
+  container.appendChild(table);
+}
+
+/**
+ * Sets the layout parameters in the modal inputs
+ * @param {TeamsLayoutConfig} config
+ */
+export function setTeamsLayoutParams(config) {
+  const setInput = (id, value) => {
+    const input = /** @type {HTMLInputElement} */ (document.getElementById(id));
+    if (input) input.value = String(value);
+  };
+  
+  setInput('param-start-row', config.startRow ?? 0);
+  setInput('param-start-col', config.startCol ?? 0);
+  setInput('param-teams-per-row', config.teamsPerRow);
+  setInput('param-columns-per-team', config.columnsPerTeam);
+  setInput('param-separator-columns', config.separatorColumns);
+  setInput('param-header-rows', config.headerRows);
+  setInput('param-players-per-team', config.playersPerTeam);
+  setInput('param-rows-between-blocks', config.rowsBetweenBlocks);
+}
+
+/**
+ * Gets the layout parameters from the modal inputs
+ * @returns {TeamsLayoutConfig}
+ */
+export function getTeamsLayoutParams() {
+  const getInput = (id, defaultVal) => {
+    const input = /** @type {HTMLInputElement} */ (document.getElementById(id));
+    const val = input ? parseInt(input.value, 10) : defaultVal;
+    return isNaN(val) ? defaultVal : val;
+  };
+  
+  return {
+    startRow: getInput('param-start-row', 0),
+    startCol: getInput('param-start-col', 0),
+    teamsPerRow: getInput('param-teams-per-row', 3),
+    columnsPerTeam: getInput('param-columns-per-team', 4),
+    separatorColumns: getInput('param-separator-columns', 1),
+    headerRows: getInput('param-header-rows', 2),
+    playersPerTeam: getInput('param-players-per-team', 5),
+    rowsBetweenBlocks: getInput('param-rows-between-blocks', 1)
+  };
+}
+
+/**
+ * Shows the teams layout error message
+ * @param {string} message
+ */
+export function showTeamsLayoutError(message) {
+  const errorDiv = document.getElementById('teams-layout-error');
+  const errorMsg = document.getElementById('teams-layout-error-message');
+  
+  if (errorDiv && errorMsg) {
+    errorMsg.textContent = message;
+    errorDiv.hidden = false;
+  }
+}
+
+/**
+ * Hides the teams layout error message
+ */
+export function hideTeamsLayoutError() {
+  const errorDiv = document.getElementById('teams-layout-error');
+  if (errorDiv) {
+    errorDiv.hidden = true;
+  }
+}
+
+/**
+ * Enables or disables the confirm button
+ * @param {boolean} enabled
+ */
+export function setTeamsLayoutConfirmEnabled(enabled) {
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('confirm-teams-layout'));
+  if (btn) {
+    btn.disabled = !enabled;
+  }
+}
+
+/**
+ * Shows the teams layout modal
+ */
+export function showTeamsLayoutModal() {
+  const modal = document.getElementById('teams-layout-modal');
+  if (modal) {
+    modal.hidden = false;
+  }
+}
+
+/**
+ * Hides the teams layout modal
+ */
+export function hideTeamsLayoutModal() {
+  const modal = document.getElementById('teams-layout-modal');
+  if (modal) {
+    modal.hidden = true;
+  }
+}
+
+/**
+ * Renders the full teams layout modal
+ * @param {string[][]} rawData - All rows from the sheet
+ * @param {TeamsLayoutConfig} config - Initial config
+ * @param {ParseError|null} parseError - Parse error to highlight
+ */
+export function renderTeamsLayoutModal(rawData, config, parseError = null) {
+  setTeamsLayoutParams(config);
+  renderTeamsLayoutPreview(rawData, config, parseError);
+  
+  if (parseError) {
+    showTeamsLayoutError(parseError.message);
+    setTeamsLayoutConfirmEnabled(false);
+  } else {
+    hideTeamsLayoutError();
+    setTeamsLayoutConfirmEnabled(true);
   }
 }
 

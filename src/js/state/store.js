@@ -744,8 +744,8 @@ export function getSelectedPlayer() {
 function getAssignedPlayerNicknames(teams) {
   const assigned = new Set();
   for (const team of teams) {
-    for (const player of team.players) {
-      assigned.add(player.nickname.toLowerCase());
+    for (const nickname of team.playerNicknames) {
+      assigned.add(nickname.toLowerCase());
     }
   }
   return assigned;

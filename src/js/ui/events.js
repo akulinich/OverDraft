@@ -6,6 +6,7 @@ import { parseSheetUrl, validateSheetUrl } from '../utils/parser.js';
 import { fetchSheet, SheetError } from '../api/sheets.js';
 import * as store from '../state/store.js';
 import * as renderer from './renderer.js';
+import { validateTeamsDataWithConfig } from '../validation/schema.js';
 
 /** @type {function|null} */
 let onSheetConfigured = null;
@@ -25,11 +26,23 @@ let onTeamPlayerSelect = null;
 /** @type {function|null} */
 let onColumnMappingConfirmed = null;
 
+/** @type {function|null} */
+let onTeamsLayoutConfirmed = null;
+
+/** @type {function|null} */
+let onTeamsLayoutCancelled = null;
+
+/** @type {function|null} */
+let onConfigureTeamsLayout = null;
+
 /** @type {string[]} Cached sheet headers for column mapping validation */
 let cachedSheetHeaders = [];
 
 /** @type {string[][]} Cached sheet data for column mapping validation */
 let cachedSheetData = [];
+
+/** @type {string[][]} Cached raw data for teams layout validation */
+let cachedTeamsRawData = [];
 
 /**
  * Shows a modal
@@ -376,6 +389,7 @@ function setupSettingsModal() {
   const settingsBtn = document.getElementById('settings-btn');
   const closeBtn = document.getElementById('close-settings');
   const changeSheetBtn = document.getElementById('change-sheet');
+  const configureTeamsLayoutBtn = document.getElementById('configure-teams-layout');
   const pollingSlider = /** @type {HTMLInputElement} */ (document.getElementById('polling-interval'));
   const pollingValue = document.getElementById('polling-value');
   
@@ -388,7 +402,21 @@ function setupSettingsModal() {
     const teamsSheet = store.getTeamsSheet();
     renderer.updateTeamsSheetInfo(teamsSheet);
     renderer.updatePollingDisplay(store.getState().pollingInterval);
+    
+    // Show/hide teams layout button based on whether teams sheet is configured
+    if (configureTeamsLayoutBtn) {
+      configureTeamsLayoutBtn.hidden = !teamsSheet;
+    }
+    
     showModal('settings-modal');
+  });
+  
+  // Configure teams layout button
+  configureTeamsLayoutBtn?.addEventListener('click', () => {
+    hideModal('settings-modal');
+    if (onConfigureTeamsLayout) {
+      onConfigureTeamsLayout();
+    }
   });
   
   // Close settings
@@ -664,6 +692,94 @@ function setupColumnMappingModal() {
   });
 }
 
+// ============================================================================
+// Teams Layout Configuration Modal
+// ============================================================================
+
+/**
+ * Opens the teams layout modal
+ * @param {string[][]} rawData - All rows from the teams sheet
+ * @param {import('../storage/persistence.js').TeamsLayoutConfig} initialConfig
+ * @param {import('../validation/schema.js').ParseError|null} parseError
+ * @param {function(import('../storage/persistence.js').TeamsLayoutConfig): void} onConfirm
+ * @param {function(): void} onCancel
+ */
+export function openTeamsLayoutModal(rawData, initialConfig, parseError, onConfirm, onCancel) {
+  cachedTeamsRawData = rawData;
+  onTeamsLayoutConfirmed = onConfirm;
+  onTeamsLayoutCancelled = onCancel;
+  
+  renderer.renderTeamsLayoutModal(rawData, initialConfig, parseError);
+  renderer.showTeamsLayoutModal();
+}
+
+/**
+ * Validates current layout params and updates UI
+ */
+function validateAndUpdateTeamsLayout() {
+  const config = renderer.getTeamsLayoutParams();
+  const result = validateTeamsDataWithConfig(cachedTeamsRawData, config);
+  
+  renderer.renderTeamsLayoutPreview(cachedTeamsRawData, config, result.parseError);
+  
+  if (result.valid) {
+    renderer.hideTeamsLayoutError();
+    renderer.setTeamsLayoutConfirmEnabled(true);
+  } else if (result.parseError) {
+    renderer.showTeamsLayoutError(result.parseError.message);
+    renderer.setTeamsLayoutConfirmEnabled(false);
+  } else if (result.errors.length > 0) {
+    renderer.showTeamsLayoutError(result.errors[0].message);
+    // Allow confirm if we at least have some teams
+    renderer.setTeamsLayoutConfirmEnabled(result.data !== null && result.data.teams.length > 0);
+  }
+}
+
+/**
+ * Sets up teams layout modal event handlers
+ */
+function setupTeamsLayoutModal() {
+  const modal = document.getElementById('teams-layout-modal');
+  const closeBtn = document.getElementById('close-teams-layout');
+  const cancelBtn = document.getElementById('cancel-teams-layout');
+  const confirmBtn = document.getElementById('confirm-teams-layout');
+  const paramsContainer = document.querySelector('.teams-layout-params');
+  
+  // Close button
+  closeBtn?.addEventListener('click', () => {
+    renderer.hideTeamsLayoutModal();
+    if (onTeamsLayoutCancelled) onTeamsLayoutCancelled();
+  });
+  
+  // Cancel button
+  cancelBtn?.addEventListener('click', () => {
+    renderer.hideTeamsLayoutModal();
+    if (onTeamsLayoutCancelled) onTeamsLayoutCancelled();
+  });
+  
+  // Backdrop click
+  modal?.addEventListener('click', (e) => {
+    if (e.target?.classList?.contains('modal-backdrop')) {
+      renderer.hideTeamsLayoutModal();
+      if (onTeamsLayoutCancelled) onTeamsLayoutCancelled();
+    }
+  });
+  
+  // Parameter inputs - live validation on change
+  paramsContainer?.addEventListener('input', () => {
+    validateAndUpdateTeamsLayout();
+  });
+  
+  // Confirm button
+  confirmBtn?.addEventListener('click', () => {
+    const config = renderer.getTeamsLayoutParams();
+    renderer.hideTeamsLayoutModal();
+    if (onTeamsLayoutConfirmed) {
+      onTeamsLayoutConfirmed(config);
+    }
+  });
+}
+
 /**
  * Initializes all event handlers
  * @param {Object} callbacks
@@ -674,6 +790,7 @@ function setupColumnMappingModal() {
  * @param {function} [callbacks.onPlayerRowSelect] - Called when a player row is clicked in players table
  * @param {function} [callbacks.onTeamPlayerSelect] - Called when a player is clicked in teams view
  * @param {function} [callbacks.onColumnMappingConfirmed] - Called when column mapping is confirmed
+ * @param {function} [callbacks.onConfigureTeamsLayout] - Called when teams layout config is requested
  */
 export function initializeEvents(callbacks) {
   onSheetConfigured = callbacks.onSheetConfigured || null;
@@ -682,6 +799,7 @@ export function initializeEvents(callbacks) {
   onPlayerRowSelect = callbacks.onPlayerRowSelect || null;
   onTeamPlayerSelect = callbacks.onTeamPlayerSelect || null;
   onColumnMappingConfirmed = callbacks.onColumnMappingConfirmed || null;
+  onConfigureTeamsLayout = callbacks.onConfigureTeamsLayout || null;
   
   setupUrlValidation();
   setupSheetForm();
@@ -693,5 +811,6 @@ export function initializeEvents(callbacks) {
   setupFilterButtons();
   setupPlayerRowClicks();
   setupColumnMappingModal();
+  setupTeamsLayoutModal();
 }
 

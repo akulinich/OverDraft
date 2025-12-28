@@ -72,7 +72,8 @@ function parseCSV(csv) {
         // Skip carriage return
       } else if (char === '\n') {
         currentRow.push(currentField.trim());
-        if (currentRow.length > 0 && currentRow.some(cell => cell !== '')) {
+        // Keep all rows including empty ones to preserve row indices
+        if (currentRow.length > 0) {
           rows.push(currentRow);
         }
         currentRow = [];
@@ -86,9 +87,7 @@ function parseCSV(csv) {
   // Don't forget the last field/row
   if (currentField || currentRow.length > 0) {
     currentRow.push(currentField.trim());
-    if (currentRow.some(cell => cell !== '')) {
-      rows.push(currentRow);
-    }
+    rows.push(currentRow);
   }
   
   return rows;

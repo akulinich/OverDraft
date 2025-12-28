@@ -10,8 +10,13 @@ import * as renderer from './ui/renderer.js';
 import * as events from './ui/events.js';
 import { createPollingManager } from './utils/polling.js';
 import { getVersionString, getBuildInfo } from './version.js';
-import { validateTeamsData } from './validation/schema.js';
+import { validateTeamsData, validateTeamsDataWithConfig } from './validation/schema.js';
 import { getSheetKey } from './utils/parser.js';
+import { 
+  loadTeamsLayoutConfig, 
+  saveTeamsLayoutConfig, 
+  getDefaultTeamsLayoutConfig 
+} from './storage/persistence.js';
 
 /** @type {ReturnType<typeof createPollingManager>|null} */
 let pollingManager = null;
@@ -27,6 +32,12 @@ let isColumnMappingPending = false;
 
 /** @type {{headers: string[], data: string[][]}|null} Pending sheet data waiting for column mapping */
 let pendingSheetData = null;
+
+/** @type {boolean} Flag indicating if teams layout modal is currently shown */
+let isTeamsLayoutPending = false;
+
+/** @type {{headers: string[], data: string[][], allRows: string[][]}|null} Pending teams data waiting for layout config */
+let pendingTeamsData = null;
 
 /**
  * Fetches and renders players sheet data
@@ -177,8 +188,9 @@ function renderPlayersPanel(headers, data, teams) {
 
 /**
  * Fetches and renders teams sheet data
+ * @param {boolean} [skipLayoutValidation=false] - Skip layout validation (used after config confirmed)
  */
-async function fetchAndRenderTeams() {
+async function fetchAndRenderTeams(skipLayoutValidation = false) {
   const teamsSheet = store.getTeamsSheet();
   if (!teamsSheet) {
     if (store.getActiveTab() === 'teams') {
@@ -187,13 +199,56 @@ async function fetchAndRenderTeams() {
     return;
   }
   
+  // Don't fetch if we're waiting for layout config
+  if (isTeamsLayoutPending) return;
+  
   try {
     const data = await fetchSheet(teamsSheet.spreadsheetId, teamsSheet.gid);
+    const sheetKey = getSheetKey(teamsSheet.spreadsheetId, teamsSheet.gid);
+    
+    // Load saved config or use defaults
+    let layoutConfig = loadTeamsLayoutConfig(sheetKey);
+    if (!layoutConfig) {
+      layoutConfig = getDefaultTeamsLayoutConfig();
+    }
+    
+    // All rows including headers (for validation)
+    const allRows = [data.headers, ...data.data];
+    
+    if (!skipLayoutValidation) {
+      // Validate with config
+      const validation = validateTeamsDataWithConfig(allRows, layoutConfig);
+      
+      if (!validation.valid || (validation.data && validation.data.teams.length === 0)) {
+        // Show layout configuration modal
+        isTeamsLayoutPending = true;
+        pendingTeamsData = { headers: data.headers, data: data.data, allRows };
+        
+        if (config.isDev) {
+          console.log('[App] Teams layout config needed:', validation);
+        }
+        
+        events.openTeamsLayoutModal(
+          allRows,
+          layoutConfig,
+          validation.parseError,
+          onTeamsLayoutConfirmed,
+          onTeamsLayoutCancelled
+        );
+        return;
+      }
+      
+      // Save the config if not already saved
+      if (!loadTeamsLayoutConfig(sheetKey)) {
+        saveTeamsLayoutConfig(sheetKey, layoutConfig);
+      }
+    }
+    
     store.updateTeamsData(data);
     
     // Render teams if on teams tab
     if (store.getActiveTab() === 'teams') {
-      renderer.renderTeamsView(data.headers, data.data);
+      await renderer.renderTeamsView(data.headers, data.data, layoutConfig);
     }
     
   } catch (err) {
@@ -202,6 +257,53 @@ async function fetchAndRenderTeams() {
     if (store.getActiveTab() === 'teams') {
       renderer.showTeamsNotConfigured();
     }
+  }
+}
+
+/**
+ * Called when teams layout configuration is confirmed
+ * @param {import('./storage/persistence.js').TeamsLayoutConfig} layoutConfig
+ */
+async function onTeamsLayoutConfirmed(layoutConfig) {
+  isTeamsLayoutPending = false;
+  
+  const teamsSheet = store.getTeamsSheet();
+  if (!teamsSheet || !pendingTeamsData) return;
+  
+  const sheetKey = getSheetKey(teamsSheet.spreadsheetId, teamsSheet.gid);
+  
+  // Save the config
+  saveTeamsLayoutConfig(sheetKey, layoutConfig);
+  
+  // Update teams data in store
+  store.updateTeamsData({
+    spreadsheetId: teamsSheet.spreadsheetId,
+    gid: teamsSheet.gid,
+    headers: pendingTeamsData.headers,
+    data: pendingTeamsData.data,
+    lastUpdated: new Date()
+  });
+  
+  pendingTeamsData = null;
+  
+  // Render teams if on teams tab
+  if (store.getActiveTab() === 'teams') {
+    const teamsData = store.getTeamsData();
+    if (teamsData) {
+      await renderer.renderTeamsView(teamsData.headers, teamsData.data, layoutConfig);
+    }
+  }
+}
+
+/**
+ * Called when teams layout configuration is cancelled
+ */
+function onTeamsLayoutCancelled() {
+  isTeamsLayoutPending = false;
+  pendingTeamsData = null;
+  
+  if (store.getActiveTab() === 'teams') {
+    renderer.showTeamsNotConfigured();
   }
 }
 
@@ -285,7 +387,11 @@ async function onTabChange(tab) {
     
     const teamsData = store.getTeamsData();
     if (teamsData) {
-      renderer.renderTeamsView(teamsData.headers, teamsData.data);
+      const teamsSheet = store.getTeamsSheet();
+      const layoutConfig = teamsSheet 
+        ? loadTeamsLayoutConfig(getSheetKey(teamsSheet.spreadsheetId, teamsSheet.gid))
+        : null;
+      await renderer.renderTeamsView(teamsData.headers, teamsData.data, layoutConfig);
     } else if (store.hasTeamsSheet()) {
       await fetchAndRenderTeams();
     } else {
@@ -302,8 +408,16 @@ function getParsedTeams() {
   const teamsData = store.getTeamsData();
   if (!teamsData) return [];
   
-  const result = validateTeamsData(teamsData.headers, teamsData.data);
-  return result.valid && result.data ? result.data.teams : [];
+  // Get saved layout config for this sheet
+  const teamsSheet = store.getTeamsSheet();
+  let layoutConfig = null;
+  if (teamsSheet) {
+    const sheetKey = getSheetKey(teamsSheet.spreadsheetId, teamsSheet.gid);
+    layoutConfig = loadTeamsLayoutConfig(sheetKey);
+  }
+  
+  const result = validateTeamsData(teamsData.headers, teamsData.data, layoutConfig || undefined);
+  return result.data ? result.data.teams : [];
 }
 
 /**
@@ -340,28 +454,18 @@ function onTeamPlayerSelect(nickname) {
     renderer.renderTeamsPlayerDetailsPanel(player, headers);
     renderer.updateTeamsPlayerSelection(nickname);
   } else {
-    // Player not found in players sheet, show minimal info
-    // Try to find in parsed teams
-    const teams = getParsedTeams();
-    for (const team of teams) {
-      const teamPlayer = team.players.find(
-        p => p.nickname.toLowerCase() === nickname.toLowerCase()
-      );
-      if (teamPlayer) {
-        const playerLike = {
-          nickname: teamPlayer.nickname,
-          battleTag: '',
-          role: teamPlayer.role,
-          rating: teamPlayer.rating,
-          heroes: '',
-          rawRow: []
-        };
-        store.setSelectedPlayer(playerLike);
-        renderer.renderTeamsPlayerDetailsPanel(playerLike, headers);
-        renderer.updateTeamsPlayerSelection(nickname);
-        break;
-      }
-    }
+    // Player not found in players sheet, show minimal info with just nickname
+    const playerLike = {
+      nickname,
+      battleTag: '',
+      role: 'unknown',
+      rating: 0,
+      heroes: '',
+      rawRow: []
+    };
+    store.setSelectedPlayer(playerLike);
+    renderer.renderTeamsPlayerDetailsPanel(playerLike, headers);
+    renderer.updateTeamsPlayerSelection(nickname);
   }
 }
 
@@ -440,6 +544,41 @@ function getFilteredTableData(headers, data, teams) {
 function onPollingIntervalChange(interval) {
   if (pollingManager) {
     pollingManager.setInterval(interval);
+  }
+}
+
+/**
+ * Called when user clicks "Configure teams layout" button in settings
+ */
+async function onConfigureTeamsLayout() {
+  const teamsSheet = store.getTeamsSheet();
+  if (!teamsSheet) return;
+  
+  try {
+    const data = await fetchSheet(teamsSheet.spreadsheetId, teamsSheet.gid);
+    const sheetKey = getSheetKey(teamsSheet.spreadsheetId, teamsSheet.gid);
+    const allRows = [data.headers, ...data.data];
+    
+    // Load saved config or use defaults
+    let layoutConfig = loadTeamsLayoutConfig(sheetKey) || getDefaultTeamsLayoutConfig();
+    
+    // Validate to get any errors
+    const validation = validateTeamsDataWithConfig(allRows, layoutConfig);
+    
+    // Cache the data for when config is confirmed
+    pendingTeamsData = { headers: data.headers, data: data.data, allRows };
+    isTeamsLayoutPending = true;
+    
+    // Open the modal
+    events.openTeamsLayoutModal(
+      allRows,
+      layoutConfig,
+      validation.parseError,
+      onTeamsLayoutConfirmed,
+      onTeamsLayoutCancelled
+    );
+  } catch (err) {
+    console.error('[App] Failed to load teams data for layout config:', err);
   }
 }
 
@@ -531,7 +670,8 @@ async function init() {
     onFilterChange,
     onPlayerRowSelect,
     onTeamPlayerSelect,
-    onColumnMappingConfirmed
+    onColumnMappingConfirmed,
+    onConfigureTeamsLayout
   });
   
   // Show tabs if teams sheet is configured
