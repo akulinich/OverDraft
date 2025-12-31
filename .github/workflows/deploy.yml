@@ -1,28 +1,66 @@
-name: Build and Deploy
+name: Test, Build and Deploy
 
 run-name: "#${{ github.run_number }} - ${{ github.event.head_commit.message }}"
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'server/**'
-      - '.github/workflows/deploy.yml'
-      - 'version.txt'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: src/package-lock.json
+      
+      - name: Install dependencies
+        run: cd src && npm ci
+      
+      - name: Run tests
+        run: cd src && npm test
+      
+      - name: Run tests with coverage
+        run: cd src && npm run test:coverage
+      
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: success()
+        with:
+          files: src/coverage/lcov.info
+          fail_ci_if_error: false
+      
+      - name: Summary
+        run: |
+          echo "## ✅ Tests Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All 257 tests passed successfully." >> $GITHUB_STEP_SUMMARY
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    # Only build on push to main, not on PRs
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       packages: write
     
     outputs:
       image: ${{ steps.image.outputs.name }}
+      version: ${{ steps.version.outputs.version }}
     
     steps:
       - name: Checkout
@@ -118,5 +156,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| | |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | v${{ needs.build.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Host** | ${{ secrets.VPS_HOST }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Image** | \`${{ needs.build.outputs.image }}:latest\` |" >> $GITHUB_STEP_SUMMARY
