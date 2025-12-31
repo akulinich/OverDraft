@@ -135,6 +135,8 @@ jobs:
       
       - name: Build frontend
         run: cd src && npm run build
+        env:
+          VITE_API_URL: ${{ vars.API_URL }}
       
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v4
@@ -197,5 +199,5 @@ jobs:
           echo "| | |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| **Version** | v${{ needs.build-api.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Frontend** | https://overdraft.live |" >> $GITHUB_STEP_SUMMARY
-          echo "| **API** | https://api.overdraft.live |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Frontend** | https://${{ vars.DOMAIN }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **API** | https://api.${{ vars.DOMAIN }} |" >> $GITHUB_STEP_SUMMARY

@@ -188,18 +188,6 @@ def check_via_ssh(config: dict[str, str]) -> bool:
         else:
             logger.warning("  No containers found or docker compose not configured")
         
-        # Check local health endpoint
-        logger.info("")
-        logger.info("Checking local health endpoint...")
-        stdin, stdout, stderr = client.exec_command("curl -sf http://localhost:8000/health 2>&1")
-        health_output = stdout.read().decode().strip()
-        health_error = stderr.read().decode().strip()
-        
-        if health_output:
-            logger.info(f"  ✓ Health: {health_output}")
-        else:
-            logger.error(f"  ✗ Health check failed: {health_error or 'No response'}")
-        
         # Check recent logs
         logger.info("")
         logger.info("Recent API logs (last 5 lines):")
@@ -212,18 +200,21 @@ def check_via_ssh(config: dict[str, str]) -> bool:
         # Check frontend files
         logger.info("")
         logger.info("Checking frontend files...")
-        stdin, stdout, stderr = client.exec_command("ls -la /var/www/overdraft/ 2>&1 | head -5")
-        files_output = stdout.read().decode().strip()
+        stdin, stdout, stderr = client.exec_command("test -f /var/www/overdraft/index.html && echo 'EXISTS' || echo 'MISSING'")
+        result = stdout.read().decode().strip()
         
-        if "index.html" in files_output:
+        if result == "EXISTS":
             logger.info("  ✓ Frontend files present")
             stdin, stdout, stderr = client.exec_command("find /var/www/overdraft -type f | wc -l")
             count = stdout.read().decode().strip()
             logger.info(f"    Total files: {count}")
-        elif "No such file" in files_output:
-            logger.warning("  ⚠ /var/www/overdraft/ does not exist")
         else:
-            logger.warning("  ⚠ Frontend files missing or not deployed yet")
+            stdin, stdout, stderr = client.exec_command("test -d /var/www/overdraft && echo 'DIR_EXISTS' || echo 'NO_DIR'")
+            dir_check = stdout.read().decode().strip()
+            if dir_check == "NO_DIR":
+                logger.warning("  ⚠ /var/www/overdraft/ does not exist")
+            else:
+                logger.warning("  ⚠ Frontend files missing (index.html not found)")
         
         client.close()
         return True

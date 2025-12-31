@@ -285,7 +285,6 @@ class VPSSetup:
     def __init__(self, config: VPSConfig):
         self.config = config
         self.client: paramiko.SSHClient | None = None
-        self.needs_restart = False  # Track if containers need restart
 
     def connect(self) -> bool:
         """Establish SSH connection to VPS."""
@@ -544,7 +543,6 @@ volumes:
             return False
         
         logger.info("  ✓ Created docker-compose.yml")
-        self.needs_restart = True
         return True
 
     def step_create_env_file(self) -> bool:
@@ -693,7 +691,6 @@ api.{base_domain} {{
             return False
         
         logger.info(f"  ✓ Created Caddyfile for {base_domain} + api.{base_domain}")
-        self.needs_restart = True
         return True
 
     def step_configure_firewall(self) -> bool:
@@ -806,13 +803,9 @@ api.{base_domain} {{
         
         return True
 
-    def step_restart_if_needed(self) -> bool:
-        """Restart containers if config files were updated."""
-        if not self.needs_restart:
-            logger.info("→ No restart needed")
-            return True
-        
-        logger.info("→ Restarting containers (config files updated)...")
+    def step_restart_containers(self) -> bool:
+        """Restart all containers to ensure clean state."""
+        logger.info("→ Restarting containers...")
         
         exit_code, _, stderr = self.run_command(
             "cd ~/overdraft && docker compose up -d --force-recreate"
@@ -856,7 +849,7 @@ api.{base_domain} {{
                 ("Configure Firewall", self.step_configure_firewall),
                 ("GHCR Login", self.step_login_ghcr),
                 ("Pull and Start", self.step_pull_and_start),
-                ("Restart if Needed", self.step_restart_if_needed),
+                ("Restart Containers", self.step_restart_containers),
             ]
             
             for i, (name, step_func) in enumerate(steps, 1):
