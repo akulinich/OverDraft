@@ -2,16 +2,15 @@ import { defineConfig } from 'vite';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
-// Read version from package.json
-const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
+// Read version from version.txt in repo root
+const version = readFileSync(resolve(__dirname, '../version.txt'), 'utf-8').trim();
 
 export default defineConfig({
   root: '.',
   base: './',
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
-    __BUILD_NUMBER__: JSON.stringify(process.env.VITE_BUILD_NUMBER || null)
   },
   build: {
     outDir: 'dist',

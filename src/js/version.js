@@ -1,21 +1,17 @@
 /**
  * Application version information.
- * Values are injected at build time by Vite.
+ * Values are injected at build time by Vite from version.txt.
  */
 
 // These globals are defined in vite.config.js
 export const APP_VERSION = __APP_VERSION__;
 export const BUILD_TIME = __BUILD_TIME__;
-export const BUILD_NUMBER = __BUILD_NUMBER__;
 
 /**
  * Returns formatted version string for display.
- * @returns {string} Version string (e.g., "v1.0.1" local, "v0.0.1" for CI build #1)
+ * @returns {string} Version string (e.g., "v0.1.1")
  */
 export function getVersionString() {
-  if (BUILD_NUMBER) {
-    return `v0.0.${BUILD_NUMBER}`;
-  }
   return `v${APP_VERSION}`;
 }
 
