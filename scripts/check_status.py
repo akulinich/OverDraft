@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Status Check Script for OverDraft API Server
+Status Check Script for OverDraft
 
-Checks the health and status of the deployed API server.
-Can check both locally (via HTTP) and on VPS (via SSH).
+Checks the health and status of deployed frontend and API.
+Can check both via HTTP and on VPS via SSH.
 
 Usage:
     python check_status.py [--ssh]
 
 Options:
-    --ssh    Connect to VPS via SSH and check container status
+    --ssh    Connect to VPS via SSH and check container/file status
              (requires .env.setup configuration)
 """
 
@@ -96,6 +96,43 @@ def check_api_sheets(base_url: str, spreadsheet_id: str = None, gid: str = "0") 
     return check_http_endpoint(url, "API Sheets")
 
 
+def check_frontend(domain: str) -> bool:
+    """Check frontend is accessible and returns valid HTML."""
+    url = f"https://{domain}"
+    logger.info(f"Checking Frontend: {url}")
+    
+    try:
+        req = Request(url, headers={"User-Agent": "OverDraft-StatusCheck/1.0"})
+        with urlopen(req, timeout=10) as response:
+            status = response.status
+            data = response.read().decode("utf-8")
+            content_type = response.headers.get("Content-Type", "")
+            
+            if status == 200 and "text/html" in content_type:
+                # Check for key elements in HTML
+                has_title = "<title>" in data and "OverDraft" in data
+                
+                if has_title:
+                    logger.info(f"  ✓ Frontend OK (HTTP {status})")
+                    return True
+                else:
+                    logger.warning("  ⚠ HTML loaded but missing expected content")
+                    return False
+            else:
+                logger.warning(f"  ⚠ Unexpected response: {status}, {content_type}")
+                return False
+                
+    except HTTPError as e:
+        logger.error(f"  ✗ Frontend failed: HTTP {e.code} - {e.reason}")
+        return False
+    except URLError as e:
+        logger.error(f"  ✗ Frontend failed: {e.reason}")
+        return False
+    except Exception as e:
+        logger.error(f"  ✗ Frontend failed: {e}")
+        return False
+
+
 def check_via_ssh(config: dict[str, str]) -> bool:
     """Connect to VPS via SSH and check container status."""
     try:
@@ -172,6 +209,22 @@ def check_via_ssh(config: dict[str, str]) -> bool:
             for line in logs.split("\n"):
                 logger.info(f"  {line}")
         
+        # Check frontend files
+        logger.info("")
+        logger.info("Checking frontend files...")
+        stdin, stdout, stderr = client.exec_command("ls -la /var/www/overdraft/ 2>&1 | head -5")
+        files_output = stdout.read().decode().strip()
+        
+        if "index.html" in files_output:
+            logger.info("  ✓ Frontend files present")
+            stdin, stdout, stderr = client.exec_command("find /var/www/overdraft -type f | wc -l")
+            count = stdout.read().decode().strip()
+            logger.info(f"    Total files: {count}")
+        elif "No such file" in files_output:
+            logger.warning("  ⚠ /var/www/overdraft/ does not exist")
+        else:
+            logger.warning("  ⚠ Frontend files missing or not deployed yet")
+        
         client.close()
         return True
         
@@ -189,44 +242,61 @@ def check_via_ssh(config: dict[str, str]) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Check OverDraft API status")
+    parser = argparse.ArgumentParser(description="Check OverDraft frontend and API status")
     parser.add_argument("--ssh", action="store_true", help="Check via SSH on VPS")
     parser.add_argument("--url", type=str, help="Custom API URL to check")
     args = parser.parse_args()
     
     print()
     print("=" * 60)
-    print("  OverDraft API Status Check")
+    print("  OverDraft Status Check")
     print("=" * 60)
     print()
     
     config = load_config()
     all_ok = True
     
-    # Determine base URL
+    # Determine URLs
+    domain = config.get("DOMAIN", "")
+    
     if args.url:
-        base_url = args.url.rstrip("/")
-    elif config.get("DOMAIN"):
-        base_url = f"https://{config['DOMAIN']}"
+        api_url = args.url.rstrip("/")
+        frontend_domain = None
+    elif domain:
+        api_url = f"https://api.{domain}"
+        frontend_domain = domain
     elif config.get("VPS_HOST"):
-        base_url = f"http://{config['VPS_HOST']}:8000"
+        api_url = f"http://{config['VPS_HOST']}:8000"
+        frontend_domain = None
     else:
         logger.error("No URL configured. Use --url or configure .env.setup")
         sys.exit(1)
     
-    logger.info(f"Target: {base_url}")
+    logger.info(f"API: {api_url}")
+    if frontend_domain:
+        logger.info(f"Frontend: https://{frontend_domain}")
     print()
     
-    # HTTP checks
+    # Frontend checks
+    if frontend_domain:
+        logger.info("-" * 40)
+        logger.info("Frontend Checks")
+        logger.info("-" * 40)
+        
+        if not check_frontend(frontend_domain):
+            all_ok = False
+        print()
+    
+    # API checks
     logger.info("-" * 40)
-    logger.info("HTTP Endpoint Checks")
+    logger.info("API Checks")
     logger.info("-" * 40)
     
-    if not check_http_endpoint(f"{base_url}/health", "Health"):
+    if not check_http_endpoint(f"{api_url}/health", "Health"):
         all_ok = False
     
     print()
-    if not check_api_sheets(base_url):
+    if not check_api_sheets(api_url):
         all_ok = False
     
     # SSH checks (optional)

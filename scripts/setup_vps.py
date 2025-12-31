@@ -6,6 +6,7 @@ This script automates the initial setup of a VPS for running the OverDraft API.
 It connects via SSH and configures everything needed for deployment.
 
 Each step checks if it's already completed and skips if so.
+Config files are checked for expected content - if outdated, user is prompted to update.
 On any failure, the script stops and shows manual instructions.
 
 Configuration:
@@ -284,6 +285,7 @@ class VPSSetup:
     def __init__(self, config: VPSConfig):
         self.config = config
         self.client: paramiko.SSHClient | None = None
+        self.needs_restart = False  # Track if containers need restart
 
     def connect(self) -> bool:
         """Establish SSH connection to VPS."""
@@ -363,6 +365,20 @@ class VPSSetup:
         """Check if a directory exists on the VPS."""
         exit_code, _, _ = self.run_command(f"test -d {path}", check=False)
         return exit_code == 0
+
+    def read_file(self, path: str) -> str | None:
+        """Read file content from VPS."""
+        exit_code, content, _ = self.run_command(f"cat {path} 2>/dev/null", check=False)
+        if exit_code == 0:
+            return content
+        return None
+
+    def prompt_update(self, file_name: str, reason: str) -> bool:
+        """Ask user if they want to update a file."""
+        print()
+        logger.warning(f"  ⚠ {file_name} needs update: {reason}")
+        response = input(f"    Update {file_name}? [y/N]: ").strip().lower()
+        return response in ("y", "yes")
 
     def step_update_system(self) -> bool:
         """Update system packages."""
@@ -464,9 +480,17 @@ class VPSSetup:
         logger.info("→ Checking docker-compose.yml...")
         
         if self.file_exists("~/overdraft/docker-compose.yml"):
-            logger.info("  ✓ docker-compose.yml already exists, skipping")
-            logger.info("    (delete ~/overdraft/docker-compose.yml to regenerate)")
-            return True
+            current = self.read_file("~/overdraft/docker-compose.yml")
+            # Check if frontend volume is configured
+            needs_update = current and "/var/www/overdraft" not in current and self.config.domain
+            
+            if needs_update:
+                if not self.prompt_update("docker-compose.yml", "missing frontend volume mount"):
+                    logger.info("  ⏭ Skipped update")
+                    return True
+            else:
+                logger.info("  ✓ docker-compose.yml already exists and is up to date")
+                return True
         
         logger.info("→ Creating docker-compose.yml...")
         
@@ -520,6 +544,7 @@ volumes:
             return False
         
         logger.info("  ✓ Created docker-compose.yml")
+        self.needs_restart = True
         return True
 
     def step_create_env_file(self) -> bool:
@@ -527,8 +552,8 @@ volumes:
         logger.info("→ Checking .env file...")
         
         if self.file_exists("~/overdraft/.env"):
-            logger.info("  ✓ .env already exists, skipping")
-            logger.info("    (delete ~/overdraft/.env to regenerate)")
+            # .env usually doesn't need updates unless user wants to change values
+            logger.info("  ✓ .env already exists")
             return True
         
         logger.info("→ Creating .env file...")
@@ -584,9 +609,29 @@ RATE_LIMIT={self.config.rate_limit}
         logger.info("→ Checking Caddyfile...")
         
         if self.file_exists("~/overdraft/Caddyfile"):
-            logger.info("  ✓ Caddyfile already exists, skipping")
-            logger.info("    (delete ~/overdraft/Caddyfile to regenerate)")
-            return True
+            current = self.read_file("~/overdraft/Caddyfile")
+            
+            # Extract base domain
+            base_domain = self.config.domain
+            if base_domain and base_domain.startswith("api."):
+                base_domain = base_domain[4:]
+            
+            # Check if both frontend and API domains are configured
+            has_frontend = current and base_domain and f"{base_domain} {{" in current
+            has_api = current and base_domain and f"api.{base_domain}" in current
+            has_frontend_root = current and "/var/www/overdraft" in current
+            
+            if base_domain and (not has_frontend or not has_frontend_root):
+                if not self.prompt_update("Caddyfile", f"missing frontend config for {base_domain}"):
+                    logger.info("  ⏭ Skipped update")
+                    return True
+            elif not has_api and base_domain:
+                if not self.prompt_update("Caddyfile", f"missing API config for api.{base_domain}"):
+                    logger.info("  ⏭ Skipped update")
+                    return True
+            else:
+                logger.info("  ✓ Caddyfile already exists and is up to date")
+                return True
         
         # Extract base domain (remove api. prefix if present)
         base_domain = self.config.domain
@@ -648,6 +693,7 @@ api.{base_domain} {{
             return False
         
         logger.info(f"  ✓ Created Caddyfile for {base_domain} + api.{base_domain}")
+        self.needs_restart = True
         return True
 
     def step_configure_firewall(self) -> bool:
@@ -760,6 +806,34 @@ api.{base_domain} {{
         
         return True
 
+    def step_restart_if_needed(self) -> bool:
+        """Restart containers if config files were updated."""
+        if not self.needs_restart:
+            logger.info("→ No restart needed")
+            return True
+        
+        logger.info("→ Restarting containers (config files updated)...")
+        
+        exit_code, _, stderr = self.run_command(
+            "cd ~/overdraft && docker compose up -d --force-recreate"
+        )
+        
+        if exit_code != 0:
+            logger.error(f"  ✗ Failed to restart containers: {stderr}")
+            return False
+        
+        logger.info("  ✓ Containers restarted")
+        
+        time.sleep(3)
+        exit_code, stdout, _ = self.run_command(
+            "curl -sf http://localhost:8000/health",
+            check=False
+        )
+        if exit_code == 0:
+            logger.info(f"  ✓ Health check passed: {stdout}")
+        
+        return True
+
     def run_setup(self) -> bool:
         """Run the complete setup process."""
         print()
@@ -782,6 +856,7 @@ api.{base_domain} {{
                 ("Configure Firewall", self.step_configure_firewall),
                 ("GHCR Login", self.step_login_ghcr),
                 ("Pull and Start", self.step_pull_and_start),
+                ("Restart if Needed", self.step_restart_if_needed),
             ]
             
             for i, (name, step_func) in enumerate(steps, 1):
