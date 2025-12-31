@@ -489,6 +489,7 @@ class VPSSetup:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /var/www/overdraft:/var/www/overdraft:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -556,6 +557,24 @@ RATE_LIMIT={self.config.rate_limit}
         logger.info("  ✓ Created .env")
         return True
 
+    def step_create_frontend_dir(self) -> bool:
+        """Create frontend directory for static files."""
+        logger.info("→ Checking frontend directory...")
+        
+        if self.dir_exists("/var/www/overdraft"):
+            logger.info("  ✓ Directory /var/www/overdraft already exists")
+            return True
+        
+        logger.info("→ Creating frontend directory...")
+        
+        exit_code, _, _ = self.run_command("mkdir -p /var/www/overdraft", sudo=True)
+        if exit_code != 0:
+            logger.error("  ✗ Failed to create directory")
+            return False
+        
+        logger.info("  ✓ Created /var/www/overdraft")
+        return True
+
     def step_create_caddyfile(self) -> bool:
         """Create Caddyfile if domain is specified."""
         if not self.config.domain:
@@ -569,10 +588,18 @@ RATE_LIMIT={self.config.rate_limit}
             logger.info("    (delete ~/overdraft/Caddyfile to regenerate)")
             return True
         
-        logger.info(f"→ Creating Caddyfile for {self.config.domain}...")
+        # Extract base domain (remove api. prefix if present)
+        base_domain = self.config.domain
+        if base_domain.startswith("api."):
+            base_domain = base_domain[4:]
         
-        content = f"""{self.config.domain} {{
-    reverse_proxy api:8000
+        logger.info(f"→ Creating Caddyfile for {base_domain}...")
+        
+        # Frontend + API configuration
+        content = f"""# Frontend - static files
+{base_domain} {{
+    root * /var/www/overdraft
+    file_server
     encode gzip
     
     header {{
@@ -581,6 +608,27 @@ RATE_LIMIT={self.config.rate_limit}
         Referrer-Policy strict-origin-when-cross-origin
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-XSS-Protection "1; mode=block"
+        -Server
+    }}
+    
+    # SPA fallback
+    try_files {{path}} /index.html
+    
+    log {{
+        output stdout
+        format console
+    }}
+}}
+
+# API - reverse proxy to Docker container
+api.{base_domain} {{
+    reverse_proxy api:8000
+    encode gzip
+    
+    header {{
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
         -Server
     }}
     
@@ -599,7 +647,7 @@ RATE_LIMIT={self.config.rate_limit}
             print(MANUAL_INSTRUCTIONS["create_caddyfile"])
             return False
         
-        logger.info(f"  ✓ Created Caddyfile for {self.config.domain}")
+        logger.info(f"  ✓ Created Caddyfile for {base_domain} + api.{base_domain}")
         return True
 
     def step_configure_firewall(self) -> bool:
@@ -729,6 +777,7 @@ RATE_LIMIT={self.config.rate_limit}
                 ("Create Directory", self.step_create_directory),
                 ("Create docker-compose.yml", self.step_create_docker_compose),
                 ("Create .env", self.step_create_env_file),
+                ("Create Frontend Dir", self.step_create_frontend_dir),
                 ("Create Caddyfile", self.step_create_caddyfile),
                 ("Configure Firewall", self.step_configure_firewall),
                 ("GHCR Login", self.step_login_ghcr),
