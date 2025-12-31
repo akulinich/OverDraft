@@ -8,6 +8,7 @@ on:
     paths:
       - 'server/**'
       - '.github/workflows/deploy.yml'
+      - 'version.txt'
   workflow_dispatch:
 
 env:
@@ -29,7 +30,7 @@ jobs:
       
       - name: Get version
         id: version
-        run: echo "version=$(jq -r .version src/package.json)" >> $GITHUB_OUTPUT
+        run: echo "version=$(cat version.txt)" >> $GITHUB_OUTPUT
       
       - name: Set image name
         id: image
@@ -71,11 +72,12 @@ jobs:
       
       - name: Summary
         run: |
-          echo "## 🚀 Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Build #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| | |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| **Version** | v${{ steps.version.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build** | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Image** | \`${{ steps.image.outputs.name }}:latest\` |" >> $GITHUB_STEP_SUMMARY
           echo "| **Platforms** | linux/amd64, linux/arm64 |" >> $GITHUB_STEP_SUMMARY
 

@@ -11,4 +11,21 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
+# Back to repo root
+cd ..
+
+# Increment patch version
+VERSION_FILE="version.txt"
+if [ -f "$VERSION_FILE" ]; then
+  VERSION=$(cat $VERSION_FILE)
+  MAJOR=$(echo $VERSION | cut -d. -f1)
+  MINOR=$(echo $VERSION | cut -d. -f2)
+  PATCH=$(echo $VERSION | cut -d. -f3)
+  NEW_PATCH=$((PATCH + 1))
+  NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+  echo "$NEW_VERSION" > $VERSION_FILE
+  git add $VERSION_FILE
+  echo "Version updated: $VERSION -> $NEW_VERSION"
+fi
+
 echo "All checks passed!"
