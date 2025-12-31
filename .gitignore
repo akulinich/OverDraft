@@ -57,3 +57,8 @@ dist/
 
 # Project specific
 output/
+
+# Setup script config (contains sensitive paths)
+scripts/.env.setup
+
+.ignoredocs/

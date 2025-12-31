@@ -11,6 +11,7 @@ export const config = {
   maxSheets: 10,
   
   // API settings
+  apiBaseUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
   gvizBaseUrl: 'https://docs.google.com/spreadsheets/d',
   
   // Development mode

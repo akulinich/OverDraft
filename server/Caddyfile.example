@@ -1,0 +1,32 @@
+# Production Caddyfile example
+# Copy this to Caddyfile and update the domain
+
+api.yourdomain.com {
+    # Reverse proxy to FastAPI
+    reverse_proxy api:8000
+    
+    # Enable compression
+    encode gzip
+    
+    # Security headers
+    header {
+        # Prevent MIME type sniffing
+        X-Content-Type-Options nosniff
+        # Prevent clickjacking
+        X-Frame-Options DENY
+        # Control referrer information
+        Referrer-Policy strict-origin-when-cross-origin
+        # Strict Transport Security (HTTPS only, 1 year)
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        # XSS protection (legacy browsers)
+        X-XSS-Protection "1; mode=block"
+        # Remove server identification
+        -Server
+    }
+    
+    # Logging
+    log {
+        output stdout
+        format console
+    }
+}

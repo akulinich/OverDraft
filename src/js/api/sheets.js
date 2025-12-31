@@ -1,10 +1,9 @@
 /**
- * Google Sheets CSV API client
- * Fetches data from published Google Sheets using CSV export
+ * Sheets API client
+ * Fetches data from OverDraft API server with ETag caching support
  */
 
 import { config } from '../config.js';
-import { parseCSV } from '../utils/csv.js';
 
 /**
  * @typedef {Object} SheetData
@@ -20,7 +19,7 @@ import { parseCSV } from '../utils/csv.js';
  */
 export class SheetError extends Error {
   /**
-   * @param {'NOT_PUBLISHED'|'NOT_FOUND'|'NETWORK'|'PARSE_ERROR'} type
+   * @param {'NOT_PUBLISHED'|'NOT_FOUND'|'NETWORK'|'PARSE_ERROR'|'SERVER_ERROR'} type
    * @param {string} message
    * @param {string} [sheetId]
    * @param {string} [gid]
@@ -35,86 +34,131 @@ export class SheetError extends Error {
 }
 
 /**
- * Fetches sheet data using CSV export
+ * In-memory cache for sheet data and ETags
+ * @type {Map<string, {data: SheetData, etag: string}>}
+ */
+const sheetCache = new Map();
+
+/**
+ * Generate cache key for spreadsheet/gid pair
+ * @param {string} spreadsheetId 
+ * @param {string} gid 
+ * @returns {string}
+ */
+function getCacheKey(spreadsheetId, gid) {
+  return `${spreadsheetId}_${gid}`;
+}
+
+/**
+ * Fetches sheet data from API server with ETag support
  * @param {string} spreadsheetId - Google Sheets document ID
  * @param {string} gid - Sheet tab ID (gid parameter)
  * @returns {Promise<SheetData>}
  */
 export async function fetchSheet(spreadsheetId, gid) {
-  // Use CSV export URL format
-  const url = `${config.gvizBaseUrl}/${spreadsheetId}/export?format=csv&gid=${gid}`;
+  const cacheKey = getCacheKey(spreadsheetId, gid);
+  const cached = sheetCache.get(cacheKey);
+  
+  const url = `${config.apiBaseUrl}/api/sheets?spreadsheetId=${encodeURIComponent(spreadsheetId)}&gid=${encodeURIComponent(gid)}`;
   
   if (config.isDev) {
-    console.log('[Sheets] Fetching CSV:', url);
+    console.log('[Sheets] Fetching from API:', url);
+  }
+  
+  const headers = {
+    'Accept': 'application/json'
+  };
+  
+  // Send ETag if we have cached data
+  if (cached?.etag) {
+    headers['If-None-Match'] = cached.etag;
   }
   
   let response;
   try {
     response = await fetch(url, {
+      method: 'GET',
+      headers,
       mode: 'cors',
-      credentials: 'omit', // Don't send cookies - allows CORS for public sheets
-      headers: {
-        'Accept': 'text/csv, text/plain, */*'
-      }
+      credentials: 'omit'
     });
   } catch (err) {
     console.error('[Sheets] Fetch failed:', err);
+    
+    // If we have cached data, return it on network error
+    if (cached) {
+      console.warn('[Sheets] Using cached data due to network error');
+      return cached.data;
+    }
+    
     throw new SheetError('NETWORK', `Network error: ${err.message}`, spreadsheetId, gid);
   }
   
   if (config.isDev) {
-    console.log('[Sheets] Response status:', response.status, response.statusText);
-    console.log('[Sheets] Response URL:', response.url);
+    console.log('[Sheets] Response status:', response.status);
   }
   
+  // Handle 304 Not Modified - return cached data
+  if (response.status === 304) {
+    if (config.isDev) {
+      console.log('[Sheets] Data unchanged (304), using cache');
+    }
+    if (cached) {
+      return cached.data;
+    }
+    // This shouldn't happen, but handle it gracefully
+    throw new SheetError('PARSE_ERROR', 'Received 304 but no cached data', spreadsheetId, gid);
+  }
+  
+  // Handle errors
   if (!response.ok) {
     console.error('[Sheets] HTTP error:', response.status, response.statusText);
+    
     if (response.status === 404) {
       throw new SheetError('NOT_FOUND', 'Sheet not found', spreadsheetId, gid);
     }
-    // Google returns redirect or error page for unauthorized access
-    throw new SheetError('NOT_PUBLISHED', 'Sheet is not published to web', spreadsheetId, gid);
+    if (response.status === 403) {
+      throw new SheetError('NOT_PUBLISHED', 'Sheet is not public', spreadsheetId, gid);
+  }
+    if (response.status >= 500) {
+      // On server error, try to use cached data
+      if (cached) {
+        console.warn('[Sheets] Server error, using cached data');
+        return cached.data;
+  }
+      throw new SheetError('SERVER_ERROR', `Server error: ${response.status}`, spreadsheetId, gid);
+    }
+    
+    throw new SheetError('NETWORK', `HTTP error: ${response.status}`, spreadsheetId, gid);
   }
   
-  let text;
+  // Parse response
+  let json;
   try {
-    text = await response.text();
+    json = await response.json();
   } catch (err) {
-    throw new SheetError('NETWORK', 'Failed to read response', spreadsheetId, gid);
+    throw new SheetError('PARSE_ERROR', 'Failed to parse response', spreadsheetId, gid);
   }
   
-  if (config.isDev) {
-    console.log('[Sheets] Response text (first 500 chars):', text.substring(0, 500));
-  }
-  
-  // Check if we got HTML instead of CSV (indicates auth error)
-  if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
-    throw new SheetError('NOT_PUBLISHED', 'Sheet is not published to web', spreadsheetId, gid);
-  }
-  
-  let rows;
-  try {
-    rows = parseCSV(text);
-  } catch (err) {
-    console.error('[Sheets] CSV parse error:', err);
-    throw new SheetError('PARSE_ERROR', `Failed to parse CSV: ${err.message}`, spreadsheetId, gid);
-  }
-  
-  if (rows.length === 0) {
-    throw new SheetError('PARSE_ERROR', 'Sheet is empty', spreadsheetId, gid);
-  }
-  
-  // First row is headers
-  const headers = rows[0];
-  const data = rows.slice(1);
-  
-  return {
-    spreadsheetId,
-    gid,
-    headers,
-    data,
-    lastUpdated: new Date()
+  // Build SheetData object
+  const sheetData = {
+    spreadsheetId: json.spreadsheetId || spreadsheetId,
+    gid: json.gid || gid,
+    headers: json.headers || [],
+    data: json.data || [],
+    lastUpdated: json.lastUpdated ? new Date(json.lastUpdated) : new Date()
   };
+  
+  // Store in cache with ETag
+  const etag = response.headers.get('ETag');
+  if (etag) {
+    sheetCache.set(cacheKey, { data: sheetData, etag });
+    if (config.isDev) {
+      console.log('[Sheets] Cached with ETag:', etag);
+    }
+  }
+  
+  return sheetData;
 }
 
 /**
@@ -128,3 +172,20 @@ export async function fetchMultiple(sheets) {
   );
 }
 
+/**
+ * Clear the sheet cache
+ */
+export function clearCache() {
+  sheetCache.clear();
+}
+
+/**
+ * Get cache statistics
+ * @returns {{size: number, keys: string[]}}
+ */
+export function getCacheStats() {
+  return {
+    size: sheetCache.size,
+    keys: Array.from(sheetCache.keys())
+  };
+}
