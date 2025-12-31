@@ -1,10 +1,13 @@
 name: Build and Deploy
 
+run-name: "#${{ github.run_number }} - ${{ github.event.head_commit.message }}"
+
 on:
   push:
     branches: [main]
     paths:
       - 'server/**'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 env:
@@ -23,6 +26,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      
+      - name: Get version
+        id: version
+        run: echo "version=$(jq -r .version src/package.json)" >> $GITHUB_OUTPUT
       
       - name: Set image name
         id: image
@@ -61,6 +68,16 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      
+      - name: Summary
+        run: |
+          echo "## 🚀 Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | v${{ steps.version.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Image** | \`${{ steps.image.outputs.name }}:latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Platforms** | linux/amd64, linux/arm64 |" >> $GITHUB_STEP_SUMMARY
 
   deploy:
     needs: build
@@ -92,3 +109,12 @@ jobs:
             
             echo "=== Cleanup old images ==="
             docker image prune -f
+      
+      - name: Summary
+        run: |
+          echo "## ✅ Deployed to VPS" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Host** | ${{ secrets.VPS_HOST }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Image** | \`${{ needs.build.outputs.image }}:latest\` |" >> $GITHUB_STEP_SUMMARY
