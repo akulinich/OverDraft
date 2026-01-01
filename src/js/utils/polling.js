@@ -23,15 +23,22 @@ export function createPollingManager(callback, intervalMs) {
   let currentInterval = intervalMs;
   let isActive = false;
   let wasRunningBeforeHide = false;
+  let isPolling = false;  // Guard against concurrent execution
   
   async function poll() {
     // Skip if not active or tab is hidden
     if (!isActive || document.visibilityState === 'hidden') return;
     
+    // Prevent concurrent execution
+    if (isPolling) return;
+    
+    isPolling = true;
     try {
       await callback();
     } catch (err) {
       console.error('[Polling] Error:', err);
+    } finally {
+      isPolling = false;
     }
     
     // Schedule next poll only if still active and visible
