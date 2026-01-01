@@ -2,6 +2,8 @@
 FastAPI application entry point.
 """
 
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -14,13 +16,16 @@ from app.config import get_settings
 
 settings = get_settings()
 
+# Version from build arg (via ENV)
+API_VERSION = os.environ.get("APP_VERSION", "dev")
+
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address, default_limits=[settings.rate_limit])
 
 app = FastAPI(
     title="OverDraft API",
     description="Caching proxy for Google Sheets API",
-    version="1.0.0",
+    version=API_VERSION,
 )
 
 # Add rate limiter to app state
@@ -55,5 +60,5 @@ app.include_router(sheets_router, prefix="/api")
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {"status": "ok"}
+    """Health check endpoint with version info."""
+    return {"status": "ok", "version": API_VERSION}
