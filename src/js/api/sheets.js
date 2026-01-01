@@ -58,6 +58,9 @@ function getCacheKey(spreadsheetId, gid) {
  * @returns {Promise<SheetData>}
  */
 export async function fetchSheet(spreadsheetId, gid) {
+  // Debug: trace where this call originates from
+  console.trace('[Sheets] fetchSheet called:', spreadsheetId.slice(0, 12) + '...', 'gid:', gid);
+  
   const cacheKey = getCacheKey(spreadsheetId, gid);
   const cached = sheetCache.get(cacheKey);
   

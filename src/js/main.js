@@ -381,10 +381,13 @@ function onTeamsLayoutCancelled() {
  * Fetches and renders all data
  */
 async function fetchAndRender() {
+  console.log('[App] fetchAndRender() called');
+  console.trace('[App] fetchAndRender stack:');
   await Promise.all([
     fetchAndRenderPlayers(),
     store.hasTeamsSheet() ? fetchAndRenderTeams() : Promise.resolve()
   ]);
+  console.log('[App] fetchAndRender() completed');
 }
 
 /**
