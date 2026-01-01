@@ -79,9 +79,9 @@ export function createPollingManager(callback, intervalMs) {
       if (isActive) return;
       isActive = true;
       wasRunningBeforeHide = true;
-      // Only poll if tab is visible
+      // Schedule first poll after interval (don't fetch immediately to avoid duplicate with init)
       if (document.visibilityState === 'visible') {
-        poll();
+        timerId = setTimeout(poll, currentInterval);
       }
     },
     
