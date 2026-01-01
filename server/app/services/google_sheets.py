@@ -179,14 +179,20 @@ class GoogleSheetsClient:
         headers = values[0] if values else []
         rows = values[1:] if len(values) > 1 else []
         
-        # Normalize row lengths to match headers
-        normalized_rows = []
+        # Find max column count (needed when first row is empty)
+        max_cols = len(headers)
         for row in rows:
-            if len(row) < len(headers):
-                row = row + [""] * (len(headers) - len(row))
-            elif len(row) > len(headers):
-                row = row[:len(headers)]
-            normalized_rows.append(row)
+            if len(row) > max_cols:
+                max_cols = len(row)
+        
+        # Normalize all rows to max column count
+        def normalize_row(row: list) -> list:
+            if len(row) < max_cols:
+                return row + [""] * (max_cols - len(row))
+            return row
+        
+        headers = normalize_row(headers)
+        normalized_rows = [normalize_row(row) for row in rows]
         
         return {
             "spreadsheetId": spreadsheet_id,
