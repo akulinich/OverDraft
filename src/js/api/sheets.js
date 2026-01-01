@@ -1,9 +1,11 @@
 /**
  * Sheets API client
  * Fetches data from OverDraft API server with ETag caching support
+ * Server returns CSV format for compatibility with existing code
  */
 
 import { config } from '../config.js';
+import { parseCSV } from '../utils/csv.js';
 
 /**
  * @typedef {Object} SheetData
@@ -66,7 +68,7 @@ export async function fetchSheet(spreadsheetId, gid) {
   }
   
   const headers = {
-    'Accept': 'application/json'
+    'Accept': 'text/csv'
   };
   
   // Send ETag if we have cached data
@@ -132,21 +134,33 @@ export async function fetchSheet(spreadsheetId, gid) {
     throw new SheetError('NETWORK', `HTTP error: ${response.status}`, spreadsheetId, gid);
   }
   
-  // Parse response
-  let json;
+  // Parse CSV response
+  let csvText;
   try {
-    json = await response.json();
+    csvText = await response.text();
   } catch (err) {
-    throw new SheetError('PARSE_ERROR', 'Failed to parse response', spreadsheetId, gid);
+    throw new SheetError('PARSE_ERROR', 'Failed to read response', spreadsheetId, gid);
   }
+  
+  // Parse CSV to rows
+  let rows;
+  try {
+    rows = parseCSV(csvText);
+  } catch (err) {
+    throw new SheetError('PARSE_ERROR', 'Failed to parse CSV', spreadsheetId, gid);
+  }
+  
+  // First row is headers, rest is data
+  const headers_row = rows.length > 0 ? rows[0] : [];
+  const data_rows = rows.length > 1 ? rows.slice(1) : [];
   
   // Build SheetData object
   const sheetData = {
-    spreadsheetId: json.spreadsheetId || spreadsheetId,
-    gid: json.gid || gid,
-    headers: json.headers || [],
-    data: json.data || [],
-    lastUpdated: json.lastUpdated ? new Date(json.lastUpdated) : new Date()
+    spreadsheetId: spreadsheetId,
+    gid: gid,
+    headers: headers_row,
+    data: data_rows,
+    lastUpdated: new Date()
   };
   
   // Store in cache with ETag

@@ -1,6 +1,7 @@
 """
 Sheets API endpoint.
 Provides cached access to Google Sheets data with ETag support.
+Returns CSV format for compatibility with existing client code.
 """
 
 import re
@@ -14,6 +15,28 @@ from slowapi.util import get_remote_address
 from app.config import get_settings
 from app.services.cache import get_cache
 from app.services.google_sheets import GoogleSheetsError, get_sheets_client
+
+
+def to_csv(headers: list[str], data: list[list[str]]) -> str:
+    """
+    Convert headers and data rows to CSV format.
+    Handles quoting for fields containing comma, quote, or newline.
+    """
+    def escape_field(field: str) -> str:
+        if not isinstance(field, str):
+            field = str(field) if field is not None else ""
+        if '"' in field or ',' in field or '\n' in field or '\r' in field:
+            return '"' + field.replace('"', '""') + '"'
+        return field
+    
+    lines = []
+    # Add headers as first row
+    lines.append(','.join(escape_field(h) for h in headers))
+    # Add data rows
+    for row in data:
+        lines.append(','.join(escape_field(cell) for cell in row))
+    
+    return '\n'.join(lines)
 
 router = APIRouter()
 settings = get_settings()
@@ -102,13 +125,16 @@ async def get_sheet(
                 "Cache-Control": "no-cache"
             })
         
-        # Return cached data
-        response.headers["ETag"] = cached.etag
-        response.headers["Cache-Control"] = "no-cache"
-        return {
-            **cached.data,
-            "lastUpdated": datetime.now(timezone.utc).isoformat()
-        }
+        # Return cached data as CSV
+        csv_content = to_csv(cached.data.get("headers", []), cached.data.get("data", []))
+        return Response(
+            content=csv_content,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "ETag": cached.etag,
+                "Cache-Control": "no-cache"
+            }
+        )
     
     # Cache miss - fetch from Google
     try:
@@ -133,10 +159,13 @@ async def get_sheet(
             "Cache-Control": "no-cache"
         })
     
-    response.headers["ETag"] = entry.etag
-    response.headers["Cache-Control"] = "no-cache"
-    
-    return {
-        **data,
-        "lastUpdated": datetime.now(timezone.utc).isoformat()
-    }
+    # Return as CSV
+    csv_content = to_csv(data.get("headers", []), data.get("data", []))
+    return Response(
+        content=csv_content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "ETag": entry.etag,
+            "Cache-Control": "no-cache"
+        }
+    )
