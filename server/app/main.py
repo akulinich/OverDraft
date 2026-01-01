@@ -13,6 +13,8 @@ from slowapi.util import get_remote_address
 
 from app.api.sheets import router as sheets_router
 from app.config import get_settings
+from app.services.cache import get_cache
+from app.services.metrics import get_metrics
 
 settings = get_settings()
 
@@ -62,3 +64,22 @@ app.include_router(sheets_router, prefix="/api")
 async def health_check():
     """Health check endpoint with version info."""
     return {"status": "ok", "version": API_VERSION}
+
+
+@app.get("/stats")
+async def get_stats():
+    """
+    Get API usage statistics.
+    
+    Returns metrics including:
+    - Google API request counts
+    - Cache hit/miss statistics
+    - Per-spreadsheet request breakdown
+    """
+    metrics = get_metrics()
+    cache = get_cache()
+    
+    return {
+        **metrics.to_dict(),
+        "cache_size": cache.size()
+    }

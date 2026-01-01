@@ -14,6 +14,7 @@ from slowapi import Limiter
 from app.config import get_settings
 from app.services.cache import get_cache
 from app.services.google_sheets import GoogleSheetsError, get_sheets_client
+from app.services.metrics import get_metrics
 
 
 def to_csv(headers: list[str], data: list[list[str]]) -> str:
@@ -131,12 +132,16 @@ async def get_sheet(
     
     cache = get_cache()
     client = get_sheets_client()
+    metrics = get_metrics()
     
     # Check cache first
     cached = cache.get(spreadsheet_id, gid)
     
     if cached is not None:
-        # Cache hit - check ETag
+        # Cache hit
+        metrics.record_cache_hit()
+        
+        # Check ETag
         if if_none_match and if_none_match == cached.etag:
             # Client has current data
             return Response(status_code=304, headers={
@@ -156,9 +161,13 @@ async def get_sheet(
         )
     
     # Cache miss - fetch from Google
+    metrics.record_cache_miss()
+    
     try:
         data = await client.fetch_sheet(spreadsheet_id, gid)
+        metrics.record_google_request(spreadsheet_id)
     except GoogleSheetsError as e:
+        metrics.record_error()
         if e.error_type == "NOT_FOUND":
             raise HTTPException(status_code=404, detail=str(e))
         if e.error_type == "NOT_PUBLISHED":

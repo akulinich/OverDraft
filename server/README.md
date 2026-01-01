@@ -42,7 +42,8 @@ docker-compose up -d
 | `CACHE_TTL` | `1` | Cache TTL in seconds |
 | `HOST` | `0.0.0.0` | Server host |
 | `PORT` | `8000` | Server port |
-| `CORS_ORIGINS` | `["*"]` | Allowed CORS origins |
+| `CORS_ORIGINS` | `["*"]` | Allowed CORS origins (JSON array) |
+| `RATE_LIMIT` | `90/minute` | Rate limit per IP per spreadsheet |
 
 ## API Endpoints
 
@@ -66,6 +67,110 @@ Fetch sheet data with caching.
 ### GET /health
 
 Health check endpoint.
+
+**Response:**
+```json
+{"status": "ok", "version": "1.0.0"}
+```
+
+### GET /stats
+
+API usage statistics for monitoring.
+
+**Response:**
+```json
+{
+  "uptime_seconds": 3600,
+  "started_at": "2025-01-01T00:00:00+00:00",
+  "google_api_requests": 150,
+  "cache_hits": 1200,
+  "cache_misses": 150,
+  "total_requests": 1350,
+  "cache_hit_rate_percent": 88.9,
+  "errors": 0,
+  "requests_per_sheet": {
+    "1GXFIaieJ2z...": 100,
+    "2HYGJbjfK3a...": 50
+  },
+  "cache_size": 5
+}
+```
+
+## Domain & DNS Setup
+
+When deploying to a new domain, configure these DNS records in your domain provider's panel:
+
+### Required DNS Records
+
+| Type | Name | Value | TTL |
+|------|------|-------|-----|
+| A | `api` | `<YOUR_SERVER_IP>` | 300 |
+
+Example: For domain `example.com`, create A record for `api.example.com` → `123.45.67.89`
+
+### Caddyfile Configuration
+
+Update `Caddyfile` with your domain:
+
+```caddyfile
+api.yourdomain.com {
+    reverse_proxy api:8000
+    encode gzip
+    
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+}
+```
+
+### Frontend Configuration
+
+Set the API URL in frontend environment:
+
+```bash
+# .env or environment variable
+VITE_API_URL=https://api.yourdomain.com
+```
+
+### CORS Configuration
+
+Update `.env` on the server:
+
+```bash
+# Allow requests from your frontend domain(s)
+CORS_ORIGINS=["https://yourdomain.com", "https://app.yourdomain.com"]
+```
+
+### Verification Checklist
+
+After DNS propagation (usually 5-30 minutes):
+
+1. **Check DNS resolution:**
+   ```bash
+   nslookup api.yourdomain.com
+   # Should return your server IP
+   ```
+
+2. **Check HTTPS certificate:**
+   ```bash
+   curl -I https://api.yourdomain.com/health
+   # Should return 200 OK
+   ```
+
+3. **Check API stats:**
+   ```bash
+   curl https://api.yourdomain.com/stats
+   # Should return JSON with metrics
+   ```
+
+4. **Test from frontend:**
+   - Open browser DevTools → Network
+   - Verify requests go to new API domain
+   - Check for CORS errors
 
 ## Getting a Google API Key
 
