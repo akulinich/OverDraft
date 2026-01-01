@@ -10,7 +10,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.config import get_settings
 from app.services.cache import get_cache
@@ -41,8 +40,28 @@ def to_csv(headers: list[str], data: list[list[str]]) -> str:
 router = APIRouter()
 settings = get_settings()
 
-# Rate limiter instance (shared with main app)
-limiter = Limiter(key_func=get_remote_address)
+
+def get_rate_limit_key(request: Request) -> str:
+    """
+    Generate rate limit key based on IP + spreadsheetId.
+    This allows 90 requests/minute per spreadsheet per IP,
+    rather than a global limit across all spreadsheets.
+    """
+    # Get client IP (handles proxies via X-Forwarded-For)
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        ip = forwarded.split(",")[0].strip()
+    else:
+        ip = request.client.host if request.client else "unknown"
+    
+    # Get spreadsheetId from query params
+    spreadsheet_id = request.query_params.get("spreadsheetId", "unknown")
+    
+    return f"{ip}:{spreadsheet_id}"
+
+
+# Rate limiter instance with per-spreadsheet key
+limiter = Limiter(key_func=get_rate_limit_key)
 
 # Validation patterns
 # Google Sheets ID: alphanumeric with dashes and underscores, typically 44 chars

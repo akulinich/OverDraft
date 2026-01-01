@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     # Example: ["https://yourdomain.com", "https://app.yourdomain.com"]
     cors_origins: list[str] = []
     
-    # Rate limiting
-    rate_limit: str = "60/minute"  # requests per minute per IP
+    # Rate limiting (per IP per spreadsheet)
+    rate_limit: str = "90/minute"
     
     model_config = {
         "env_file": ".env",
