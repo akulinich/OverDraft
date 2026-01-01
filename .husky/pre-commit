@@ -1,10 +1,19 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
-cd src
+# Run server tests
+echo "Running server tests..."
+cd server
+python -m pytest tests/ -v --tb=short
+if [ $? -ne 0 ]; then
+  echo "Server tests failed. Commit aborted."
+  exit 1
+fi
+cd ..
 
-# Run tests
-echo "Running tests..."
+# Run frontend tests
+echo "Running frontend tests..."
+cd src
 npm test
 if [ $? -ne 0 ]; then
   echo "Tests failed. Commit aborted."

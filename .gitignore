@@ -62,3 +62,4 @@ output/
 scripts/.env.setup
 
 .ignoredocs/
+.cursor/debug.log
