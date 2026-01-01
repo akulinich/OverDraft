@@ -121,13 +121,23 @@ export async function fetchSheet(spreadsheetId, gid) {
     }
     if (response.status === 403) {
       throw new SheetError('NOT_PUBLISHED', 'Sheet is not public', spreadsheetId, gid);
-  }
+    }
+    
+    // Rate limited - use cached data if available
+    if (response.status === 429) {
+      if (cached) {
+        console.warn('[Sheets] Rate limited (429), using cached data');
+        return cached.data;
+      }
+      throw new SheetError('SERVER_ERROR', 'Rate limit exceeded', spreadsheetId, gid);
+    }
+    
     if (response.status >= 500) {
       // On server error, try to use cached data
       if (cached) {
         console.warn('[Sheets] Server error, using cached data');
         return cached.data;
-  }
+      }
       throw new SheetError('SERVER_ERROR', `Server error: ${response.status}`, spreadsheetId, gid);
     }
     
