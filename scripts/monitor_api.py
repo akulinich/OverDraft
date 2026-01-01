@@ -45,11 +45,9 @@ def main():
     
     print(f"Monitoring: {stats_url}")
     print(f"Interval: {interval}s")
-    print("-" * 70)
-    print(f"{'Time':<10} {'Uptime':<10} {'Google':<12} {'Cache':<20} {'Hit%':<8}")
-    print("-" * 70)
-    
-    prev_google = None
+    print("-" * 85)
+    print(f"{'Time':<10} {'Uptime':<10} {'Server RPM':<12} {'Google RPM':<12} {'Cache':<15} {'Hit%':<8}")
+    print("-" * 85)
     
     while True:
         try:
@@ -64,23 +62,19 @@ def main():
             
             now = datetime.now().strftime("%H:%M:%S")
             uptime = format_duration(data.get("uptime_seconds", 0))
-            google = data.get("google_api_requests", 0)
+            
+            # RPM metrics (requests per minute, last 60 seconds)
+            server_rpm = data.get("server_rpm", 0)
+            google_rpm = data.get("google_rpm", 0)
+            
+            # Cache stats
             hits = data.get("cache_hits", 0)
             misses = data.get("cache_misses", 0)
             hit_rate = data.get("cache_hit_rate_percent", 0)
             
-            # Calculate delta since last check
-            delta = ""
-            if prev_google is not None:
-                diff = google - prev_google
-                if diff > 0:
-                    delta = f" (+{diff})"
-            prev_google = google
-            
             cache_str = f"{hits}/{misses}"
-            google_str = f"{google}{delta}"
             
-            print(f"{now:<10} {uptime:<10} {google_str:<12} {cache_str:<20} {hit_rate:<8.1f}")
+            print(f"{now:<10} {uptime:<10} {server_rpm:<12.0f} {google_rpm:<12.0f} {cache_str:<15} {hit_rate:<8.1f}")
             
         except httpx.ConnectError:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Connection failed")
@@ -97,4 +91,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
