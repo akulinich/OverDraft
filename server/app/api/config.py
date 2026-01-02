@@ -18,12 +18,13 @@ from app.config import get_settings
 router = APIRouter()
 settings = get_settings()
 
-# Config storage directory
-# Default to /app/data/configs for Docker, can be overridden via env
-CONFIG_DIR = Path(os.environ.get("CONFIG_STORAGE_PATH", "/app/data/configs"))
-
 # TTL for shared configs (30 days)
 CONFIG_TTL_DAYS = 30
+
+
+def get_config_dir() -> Path:
+    """Get config storage directory, reading from env at runtime for testability."""
+    return Path(os.environ.get("CONFIG_STORAGE_PATH", "/app/data/configs"))
 
 
 def get_rate_limit_key(request: Request) -> str:
@@ -58,9 +59,11 @@ class GetConfigResponse(BaseModel):
     expiresAt: str
 
 
-def ensure_config_dir() -> None:
-    """Ensure config storage directory exists."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+def ensure_config_dir() -> Path:
+    """Ensure config storage directory exists and return it."""
+    config_dir = get_config_dir()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir
 
 
 def cleanup_expired_configs() -> int:
@@ -68,13 +71,14 @@ def cleanup_expired_configs() -> int:
     Remove expired config files.
     Returns count of removed files.
     """
-    if not CONFIG_DIR.exists():
+    config_dir = get_config_dir()
+    if not config_dir.exists():
         return 0
     
     now = datetime.now(timezone.utc)
     removed = 0
     
-    for config_file in CONFIG_DIR.glob("*.json"):
+    for config_file in config_dir.glob("*.json"):
         try:
             with open(config_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -102,7 +106,7 @@ async def share_config(request: Request, body: ShareConfigRequest):
     
     The config is stored for 30 days.
     """
-    ensure_config_dir()
+    config_dir = ensure_config_dir()
     
     # Generate unique ID
     guid = str(uuid.uuid4())
@@ -118,7 +122,7 @@ async def share_config(request: Request, body: ShareConfigRequest):
         "expiresAt": expires_at.isoformat()
     }
     
-    config_path = CONFIG_DIR / f"{guid}.json"
+    config_path = config_dir / f"{guid}.json"
     
     try:
         with open(config_path, "w", encoding="utf-8") as f:
@@ -146,7 +150,8 @@ async def get_config(request: Request, guid: str):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid GUID format")
     
-    config_path = CONFIG_DIR / f"{guid}.json"
+    config_dir = get_config_dir()
+    config_path = config_dir / f"{guid}.json"
     
     if not config_path.exists():
         raise HTTPException(status_code=404, detail="Config not found. The share link may have expired or is invalid.")
