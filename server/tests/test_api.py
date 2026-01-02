@@ -117,9 +117,26 @@ def test_sheets_invalid_gid():
 @patch("app.api.sheets.get_sheets_client")
 def test_sheets_success(mock_client):
     """Valid request with mocked Google client returns CSV."""
-    mock_instance = AsyncMock()
-    mock_instance.fetch_sheet.return_value = {
-        "headers": ["Name"], "data": [["Alice"]]
+    from unittest.mock import MagicMock
+    mock_instance = MagicMock()
+    
+    # Mock the async fetch_spreadsheet method
+    async def mock_fetch_spreadsheet(spreadsheet_id):
+        return {
+            "spreadsheetId": spreadsheet_id,
+            "sheets": {
+                "0": {"title": "Sheet1", "headers": ["Name"], "data": [["Alice"]]}
+            }
+        }
+    mock_instance.fetch_spreadsheet = mock_fetch_spreadsheet
+    
+    # Mock get_sheet_from_spreadsheet (sync method)
+    mock_instance.get_sheet_from_spreadsheet.return_value = {
+        "spreadsheetId": "1234567890abcdef",
+        "gid": "0",
+        "title": "Sheet1",
+        "headers": ["Name"],
+        "data": [["Alice"]]
     }
     mock_client.return_value = mock_instance
     

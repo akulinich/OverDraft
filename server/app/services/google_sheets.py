@@ -1,6 +1,6 @@
 """
 Google Sheets API client.
-Fetches data from public Google Sheets using the official API.
+Fetches entire spreadsheet data in a single API call using includeGridData=true.
 Includes request coalescing to prevent duplicate API calls.
 """
 
@@ -25,9 +25,10 @@ class GoogleSheetsClient:
     """
     Client for fetching data from Google Sheets API.
     
+    Fetches entire spreadsheet in one request using includeGridData=true.
     Implements request coalescing: if multiple requests come in for the same
-    sheet while a Google API request is already in-flight, they all wait for
-    the same response instead of triggering new API requests.
+    spreadsheet while a Google API request is already in-flight, they all wait
+    for the same response instead of triggering new API requests.
     """
     
     BASE_URL = "https://sheets.googleapis.com/v4/spreadsheets"
@@ -35,8 +36,8 @@ class GoogleSheetsClient:
     def __init__(self):
         self.settings = get_settings()
         self._client: httpx.AsyncClient | None = None
-        # Track in-flight requests for coalescing
-        self._pending_requests: dict[tuple[str, str], asyncio.Task] = {}
+        # Track in-flight requests for coalescing (by spreadsheet_id only)
+        self._pending_requests: dict[str, asyncio.Task] = {}
     
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
@@ -49,20 +50,25 @@ class GoogleSheetsClient:
         if self._client and not self._client.is_closed:
             await self._client.aclose()
     
-    async def fetch_sheet(self, spreadsheet_id: str, gid: str) -> dict[str, Any]:
+    async def fetch_spreadsheet(self, spreadsheet_id: str) -> dict[str, Any]:
         """
-        Fetch sheet data from Google Sheets API with request coalescing.
+        Fetch entire spreadsheet with all sheets in one API call.
         
-        If a request for the same sheet is already in progress, waits for
-        that request instead of starting a new one. This prevents duplicate
-        API calls when multiple clients request the same data simultaneously.
+        Uses includeGridData=true to get metadata and cell values together.
+        Implements request coalescing for concurrent requests.
         
         Args:
             spreadsheet_id: Google Sheets document ID
-            gid: Sheet tab ID (numeric)
             
         Returns:
-            dict with headers and data arrays
+            dict with sheets data:
+            {
+                "spreadsheetId": "...",
+                "sheets": {
+                    "0": {"title": "Sheet1", "headers": [...], "data": [...]},
+                    "123": {"title": "Sheet2", "headers": [...], "data": [...]}
+                }
+            }
             
         Raises:
             GoogleSheetsError: On API errors
@@ -72,51 +78,40 @@ class GoogleSheetsClient:
                 "CONFIG_ERROR",
                 "Google API key not configured",
                 spreadsheet_id,
-                gid
+                ""
             )
         
-        key = (spreadsheet_id, gid)
-        
         # Check if request is already in-flight
-        if key in self._pending_requests:
+        if spreadsheet_id in self._pending_requests:
             # Wait for the existing request
-            return await self._pending_requests[key]
+            return await self._pending_requests[spreadsheet_id]
         
         # Create new request task
-        task = asyncio.create_task(self._do_fetch_sheet(spreadsheet_id, gid))
-        self._pending_requests[key] = task
+        task = asyncio.create_task(self._do_fetch_spreadsheet(spreadsheet_id))
+        self._pending_requests[spreadsheet_id] = task
         
         try:
             return await task
         finally:
             # Clean up after completion (success or failure)
-            self._pending_requests.pop(key, None)
+            self._pending_requests.pop(spreadsheet_id, None)
     
-    async def _do_fetch_sheet(self, spreadsheet_id: str, gid: str) -> dict[str, Any]:
+    async def _do_fetch_spreadsheet(self, spreadsheet_id: str) -> dict[str, Any]:
         """
         Actually perform the fetch from Google Sheets API.
         
         Args:
             spreadsheet_id: Google Sheets document ID
-            gid: Sheet tab ID (numeric)
             
         Returns:
-            dict with headers and data arrays
+            Parsed spreadsheet data with all sheets
         """
-        # First, get sheet metadata to find sheet name by gid
-        sheet_name = await self._get_sheet_name(spreadsheet_id, gid)
-        
-        # Then fetch the actual data
-        return await self._fetch_values(spreadsheet_id, gid, sheet_name)
-    
-    async def _get_sheet_name(self, spreadsheet_id: str, gid: str) -> str:
-        """Get sheet name by gid from spreadsheet metadata."""
         client = await self._get_client()
         
         url = f"{self.BASE_URL}/{spreadsheet_id}"
         params = {
             "key": self.settings.google_api_key,
-            "fields": "sheets(properties(sheetId,title))"
+            "includeGridData": "true"
         }
         
         try:
@@ -126,7 +121,7 @@ class GoogleSheetsClient:
                 "NETWORK",
                 f"Network error: {e}",
                 spreadsheet_id,
-                gid
+                ""
             )
         
         if response.status_code == 404:
@@ -134,7 +129,7 @@ class GoogleSheetsClient:
                 "NOT_FOUND",
                 "Spreadsheet not found",
                 spreadsheet_id,
-                gid
+                ""
             )
         
         if response.status_code == 403:
@@ -142,7 +137,15 @@ class GoogleSheetsClient:
                 "NOT_PUBLISHED",
                 "Spreadsheet is not public",
                 spreadsheet_id,
-                gid
+                ""
+            )
+        
+        if response.status_code == 429:
+            raise GoogleSheetsError(
+                "RATE_LIMITED",
+                "Google API rate limit exceeded",
+                spreadsheet_id,
+                ""
             )
         
         if not response.is_success:
@@ -150,98 +153,162 @@ class GoogleSheetsClient:
                 "API_ERROR",
                 f"Google API error: {response.status_code}",
                 spreadsheet_id,
-                gid
+                ""
             )
         
-        data = response.json()
-        gid_int = int(gid)
-        
-        for sheet in data.get("sheets", []):
-            props = sheet.get("properties", {})
-            if props.get("sheetId") == gid_int:
-                return props.get("title", "Sheet1")
-        
-        raise GoogleSheetsError(
-            "NOT_FOUND",
-            f"Sheet with gid={gid} not found",
-            spreadsheet_id,
-            gid
-        )
+        raw_data = response.json()
+        return self._parse_spreadsheet_response(spreadsheet_id, raw_data)
     
-    async def _fetch_values(
+    def _parse_spreadsheet_response(
         self, 
         spreadsheet_id: str, 
-        gid: str, 
-        sheet_name: str
+        raw_data: dict[str, Any]
     ) -> dict[str, Any]:
-        """Fetch cell values from a specific sheet."""
-        client = await self._get_client()
+        """
+        Parse the raw Google Sheets API response into our format.
         
-        # URL-encode sheet name for the range
-        encoded_name = sheet_name.replace("'", "''")
-        range_param = f"'{encoded_name}'"
-        
-        url = f"{self.BASE_URL}/{spreadsheet_id}/values/{range_param}"
-        params = {
-            "key": self.settings.google_api_key,
-            "valueRenderOption": "FORMATTED_VALUE",
-            "dateTimeRenderOption": "FORMATTED_STRING"
+        Args:
+            spreadsheet_id: Spreadsheet ID
+            raw_data: Raw response from Google API
+            
+        Returns:
+            Parsed data with sheets indexed by gid
+        """
+        result = {
+            "spreadsheetId": spreadsheet_id,
+            "sheets": {}
         }
         
-        try:
-            response = await client.get(url, params=params)
-        except httpx.RequestError as e:
-            raise GoogleSheetsError(
-                "NETWORK",
-                f"Network error: {e}",
-                spreadsheet_id,
-                gid
-            )
-        
-        if not response.is_success:
-            raise GoogleSheetsError(
-                "API_ERROR",
-                f"Failed to fetch values: {response.status_code}",
-                spreadsheet_id,
-                gid
-            )
-        
-        data = response.json()
-        values = data.get("values", [])
-        
-        if not values:
-            return {
-                "spreadsheetId": spreadsheet_id,
-                "gid": gid,
-                "headers": [],
-                "data": []
+        for sheet in raw_data.get("sheets", []):
+            props = sheet.get("properties", {})
+            sheet_id = str(props.get("sheetId", 0))
+            title = props.get("title", "Sheet")
+            
+            # Extract grid data
+            grid_data = sheet.get("data", [])
+            if not grid_data:
+                result["sheets"][sheet_id] = {
+                    "title": title,
+                    "headers": [],
+                    "data": []
+                }
+                continue
+            
+            # Parse row data from first grid (usually the only one)
+            row_data = grid_data[0].get("rowData", [])
+            rows = self._extract_rows(row_data)
+            
+            if not rows:
+                result["sheets"][sheet_id] = {
+                    "title": title,
+                    "headers": [],
+                    "data": []
+                }
+                continue
+            
+            # First row is headers, rest is data
+            headers = rows[0] if rows else []
+            data_rows = rows[1:] if len(rows) > 1 else []
+            
+            # Normalize row lengths
+            max_cols = max(len(headers), max((len(r) for r in data_rows), default=0))
+            
+            def normalize_row(row: list) -> list:
+                if len(row) < max_cols:
+                    return row + [""] * (max_cols - len(row))
+                return row
+            
+            result["sheets"][sheet_id] = {
+                "title": title,
+                "headers": normalize_row(headers),
+                "data": [normalize_row(row) for row in data_rows]
             }
         
-        # First row is headers, rest is data
-        headers = values[0] if values else []
-        rows = values[1:] if len(values) > 1 else []
+        return result
+    
+    def _extract_rows(self, row_data: list[dict]) -> list[list[str]]:
+        """
+        Extract cell values from rowData structure.
         
-        # Find max column count (needed when first row is empty)
-        max_cols = len(headers)
-        for row in rows:
-            if len(row) > max_cols:
-                max_cols = len(row)
+        Args:
+            row_data: List of row objects from Google API
+            
+        Returns:
+            List of rows, each row is a list of string values
+        """
+        rows = []
         
-        # Normalize all rows to max column count
-        def normalize_row(row: list) -> list:
-            if len(row) < max_cols:
-                return row + [""] * (max_cols - len(row))
-            return row
+        for row in row_data:
+            cells = row.get("values", [])
+            row_values = []
+            
+            for cell in cells:
+                # Get formatted value (what user sees in the spreadsheet)
+                value = cell.get("formattedValue", "")
+                row_values.append(value if value is not None else "")
+            
+            rows.append(row_values)
         
-        headers = normalize_row(headers)
-        normalized_rows = [normalize_row(row) for row in rows]
+        return rows
+    
+    def get_sheet_from_spreadsheet(
+        self, 
+        spreadsheet_data: dict[str, Any], 
+        gid: str
+    ) -> dict[str, Any] | None:
+        """
+        Extract a specific sheet from cached spreadsheet data.
+        
+        Args:
+            spreadsheet_data: Full spreadsheet data from fetch_spreadsheet
+            gid: Sheet ID to extract
+            
+        Returns:
+            Sheet data or None if not found
+        """
+        sheets = spreadsheet_data.get("sheets", {})
+        sheet = sheets.get(gid)
+        
+        if sheet is None:
+            return None
         
         return {
-            "spreadsheetId": spreadsheet_id,
+            "spreadsheetId": spreadsheet_data.get("spreadsheetId"),
             "gid": gid,
-            "headers": headers,
-            "data": normalized_rows
+            "title": sheet.get("title"),
+            "headers": sheet.get("headers", []),
+            "data": sheet.get("data", [])
         }
+    
+    # Legacy method for backwards compatibility
+    async def fetch_sheet(self, spreadsheet_id: str, gid: str) -> dict[str, Any]:
+        """
+        Fetch a specific sheet (legacy interface).
+        
+        Internally fetches entire spreadsheet and extracts the requested sheet.
+        
+        Args:
+            spreadsheet_id: Google Sheets document ID
+            gid: Sheet tab ID
+            
+        Returns:
+            dict with headers and data arrays
+            
+        Raises:
+            GoogleSheetsError: On API errors or if sheet not found
+        """
+        spreadsheet_data = await self.fetch_spreadsheet(spreadsheet_id)
+        sheet = self.get_sheet_from_spreadsheet(spreadsheet_data, gid)
+        
+        if sheet is None:
+            raise GoogleSheetsError(
+                "NOT_FOUND",
+                f"Sheet with gid={gid} not found",
+                spreadsheet_id,
+                gid
+            )
+        
+        return sheet
 
 
 # Singleton instance
@@ -254,6 +321,3 @@ def get_sheets_client() -> GoogleSheetsClient:
     if _client is None:
         _client = GoogleSheetsClient()
     return _client
-
-
-
