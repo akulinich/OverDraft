@@ -3,10 +3,15 @@
  */
 
 import * as store from '../state/store.js';
-import { loadTeamsLayoutConfig, saveTeamsLayoutConfig } from '../storage/persistence.js';
+import { 
+  loadTeamsLayoutConfig, 
+  saveTeamsLayoutConfig,
+  saveColumnsConfiguration,
+  saveTeamsDisplayConfig
+} from '../storage/persistence.js';
 import { getSheetKey } from './parser.js';
 
-const EXPORT_VERSION = 1;
+const EXPORT_VERSION = 2;
 
 /**
  * Builds Google Sheets URL from spreadsheetId and gid
@@ -92,7 +97,7 @@ export function exportConfiguration() {
     }
   }
   
-  // Collect column mappings for all sheets
+  // Collect column mappings for all sheets (legacy format for backward compatibility)
   const playersSheetKey = getSheetKey(playersSheet.spreadsheetId, playersSheet.gid);
   const playersMapping = store.getColumnMapping(playersSheetKey);
   if (playersMapping) {
@@ -105,6 +110,18 @@ export function exportConfiguration() {
     if (teamsMapping) {
       exportConfig.columnMappings[teamsSheetKey] = teamsMapping;
     }
+  }
+  
+  // Add columns configuration (new format with types and order)
+  const columnsConfig = store.getColumnsConfiguration(playersSheetKey);
+  if (columnsConfig) {
+    exportConfig.columnsConfig = columnsConfig;
+  }
+  
+  // Add teams display config (which columns to show in team cards)
+  const teamsDisplayConfig = store.getTeamsDisplayConfiguration(playersSheetKey);
+  if (teamsDisplayConfig) {
+    exportConfig.teamsDisplayConfig = teamsDisplayConfig;
   }
   
   // Encode to base64
@@ -173,13 +190,26 @@ export function importConfiguration(configString) {
       store.setTeamsSheet(null);
     }
     
-    // Import column mappings
+    // Import column mappings (legacy format)
     if (config.columnMappings && typeof config.columnMappings === 'object') {
       for (const [sheetKey, mapping] of Object.entries(config.columnMappings)) {
         if (mapping && typeof mapping === 'object') {
           store.setColumnMapping(sheetKey, mapping);
         }
       }
+    }
+    
+    // Import columns configuration (new format)
+    const playersSheetKey = getSheetKey(config.playersSheet.spreadsheetId, config.playersSheet.gid);
+    if (config.columnsConfig) {
+      saveColumnsConfiguration(playersSheetKey, config.columnsConfig);
+      store.setColumnsConfiguration(playersSheetKey, config.columnsConfig);
+    }
+    
+    // Import teams display config
+    if (config.teamsDisplayConfig) {
+      saveTeamsDisplayConfig(playersSheetKey, config.teamsDisplayConfig);
+      store.setTeamsDisplayConfiguration(playersSheetKey, config.teamsDisplayConfig);
     }
     
     return { success: true };

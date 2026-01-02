@@ -8,6 +8,10 @@ const mockGetColumnMapping = vi.fn();
 const mockReplaceSheet = vi.fn();
 const mockSetTeamsSheet = vi.fn();
 const mockSetColumnMapping = vi.fn();
+const mockGetColumnsConfiguration = vi.fn();
+const mockSetColumnsConfiguration = vi.fn();
+const mockGetTeamsDisplayConfiguration = vi.fn();
+const mockSetTeamsDisplayConfiguration = vi.fn();
 
 vi.mock('../../js/state/store.js', () => ({
   getState: () => mockGetState(),
@@ -16,16 +20,24 @@ vi.mock('../../js/state/store.js', () => ({
   getColumnMapping: (key) => mockGetColumnMapping(key),
   replaceSheet: (config) => mockReplaceSheet(config),
   setTeamsSheet: (config) => mockSetTeamsSheet(config),
-  setColumnMapping: (key, mapping) => mockSetColumnMapping(key, mapping)
+  setColumnMapping: (key, mapping) => mockSetColumnMapping(key, mapping),
+  getColumnsConfiguration: (key) => mockGetColumnsConfiguration(key),
+  setColumnsConfiguration: (key, config) => mockSetColumnsConfiguration(key, config),
+  getTeamsDisplayConfiguration: (key) => mockGetTeamsDisplayConfiguration(key),
+  setTeamsDisplayConfiguration: (key, config) => mockSetTeamsDisplayConfiguration(key, config)
 }));
 
 // Mock persistence
 const mockLoadTeamsLayoutConfig = vi.fn();
 const mockSaveTeamsLayoutConfig = vi.fn();
+const mockSaveColumnsConfiguration = vi.fn();
+const mockSaveTeamsDisplayConfig = vi.fn();
 
 vi.mock('../../js/storage/persistence.js', () => ({
   loadTeamsLayoutConfig: (key) => mockLoadTeamsLayoutConfig(key),
-  saveTeamsLayoutConfig: (key, config) => mockSaveTeamsLayoutConfig(key, config)
+  saveTeamsLayoutConfig: (key, config) => mockSaveTeamsLayoutConfig(key, config),
+  saveColumnsConfiguration: (key, config) => mockSaveColumnsConfiguration(key, config),
+  saveTeamsDisplayConfig: (key, config) => mockSaveTeamsDisplayConfig(key, config)
 }));
 
 // Mock parser
@@ -61,6 +73,8 @@ describe('Export Configuration', () => {
     mockIsLocalSheet.mockReturnValue(false);
     mockGetColumnMapping.mockReturnValue(null);
     mockLoadTeamsLayoutConfig.mockReturnValue(null);
+    mockGetColumnsConfiguration.mockReturnValue(null);
+    mockGetTeamsDisplayConfiguration.mockReturnValue(null);
   });
 
   describe('isExportAvailable', () => {
@@ -155,7 +169,7 @@ describe('Export Configuration', () => {
       const configParam = urlObj.searchParams.get('config');
       const decoded = JSON.parse(decodeURIComponent(escape(atob(configParam))));
       
-      expect(decoded.version).toBe(1);
+      expect(decoded.version).toBe(2);
       expect(decoded.playersSheet.spreadsheetId).toBe('abc123');
       expect(decoded.playersSheet.gid).toBe('0');
       expect(decoded.playersSheet.url).toBe('https://docs.google.com/spreadsheets/d/abc123/edit#gid=0');
@@ -297,12 +311,67 @@ describe('Export Configuration', () => {
       const configParam = urlObj.searchParams.get('config');
       const decoded = JSON.parse(decodeURIComponent(escape(atob(configParam))));
       
-      expect(decoded.version).toBe(1);
+      expect(decoded.version).toBe(2);
       expect(decoded.playersSheet.spreadsheetId).toBe('abc123');
       expect(decoded.teamsSheet.spreadsheetId).toBe('def456');
       expect(decoded.teamsLayout).toEqual(teamsLayout);
       expect(decoded.columnMappings['abc123_0']).toEqual(playersMapping);
       expect(decoded.columnMappings['def456_1']).toEqual(teamsMapping);
+    });
+
+    it('exports configuration with columns configuration', () => {
+      mockGetState.mockReturnValue({
+        configuredSheets: [
+          { sourceType: 'google', spreadsheetId: 'abc123', gid: '0' }
+        ]
+      });
+      mockIsLocalSheet.mockReturnValue(false);
+      
+      const columnsConfig = {
+        columns: [
+          { id: 'col_name', displayName: 'Имя', sheetColumn: 'Nick', columnType: 'name', order: 0 },
+          { id: 'col_role', displayName: 'Роль', sheetColumn: 'Role', columnType: 'role', order: 1 },
+          { id: 'col_rating', displayName: 'Рейтинг', sheetColumn: 'SR', columnType: 'rating', order: 2 }
+        ]
+      };
+      mockGetColumnsConfiguration.mockReturnValue(columnsConfig);
+      
+      const url = exportConfiguration();
+      
+      expect(url).toBeTruthy();
+      const urlObj = new URL(url);
+      const configParam = urlObj.searchParams.get('config');
+      const decoded = JSON.parse(decodeURIComponent(escape(atob(configParam))));
+      
+      expect(decoded.columnsConfig).toBeDefined();
+      expect(decoded.columnsConfig.columns).toHaveLength(3);
+      expect(decoded.columnsConfig.columns[0].columnType).toBe('name');
+      expect(decoded.columnsConfig.columns[1].columnType).toBe('role');
+      expect(decoded.columnsConfig.columns[2].columnType).toBe('rating');
+    });
+
+    it('exports configuration with teams display config', () => {
+      mockGetState.mockReturnValue({
+        configuredSheets: [
+          { sourceType: 'google', spreadsheetId: 'abc123', gid: '0' }
+        ]
+      });
+      mockIsLocalSheet.mockReturnValue(false);
+      
+      const teamsDisplayConfig = {
+        visibleColumnIds: ['col_role', 'col_rating']
+      };
+      mockGetTeamsDisplayConfiguration.mockReturnValue(teamsDisplayConfig);
+      
+      const url = exportConfiguration();
+      
+      expect(url).toBeTruthy();
+      const urlObj = new URL(url);
+      const configParam = urlObj.searchParams.get('config');
+      const decoded = JSON.parse(decodeURIComponent(escape(atob(configParam))));
+      
+      expect(decoded.teamsDisplayConfig).toBeDefined();
+      expect(decoded.teamsDisplayConfig.visibleColumnIds).toEqual(['col_role', 'col_rating']);
     });
   });
 
@@ -427,6 +496,55 @@ describe('Export Configuration', () => {
           heroes: 'Герои'
         })
       );
+    });
+
+    it('imports configuration with columns configuration', () => {
+      const columnsConfig = {
+        columns: [
+          { id: 'col_name', displayName: 'Имя', sheetColumn: 'Nick', columnType: 'name', order: 0 },
+          { id: 'col_role', displayName: 'Роль', sheetColumn: 'Role', columnType: 'role', order: 1 }
+        ]
+      };
+      
+      const config = {
+        version: 2,
+        playersSheet: {
+          spreadsheetId: 'abc123',
+          gid: '0',
+          url: 'https://docs.google.com/spreadsheets/d/abc123/edit#gid=0'
+        },
+        columnMappings: {},
+        columnsConfig
+      };
+      
+      const result = importConfiguration(createConfigString(config));
+      
+      expect(result.success).toBe(true);
+      expect(mockSaveColumnsConfiguration).toHaveBeenCalledWith('abc123_0', columnsConfig);
+      expect(mockSetColumnsConfiguration).toHaveBeenCalledWith('abc123_0', columnsConfig);
+    });
+
+    it('imports configuration with teams display config', () => {
+      const teamsDisplayConfig = {
+        visibleColumnIds: ['col_role', 'col_rating']
+      };
+      
+      const config = {
+        version: 2,
+        playersSheet: {
+          spreadsheetId: 'abc123',
+          gid: '0',
+          url: 'https://docs.google.com/spreadsheets/d/abc123/edit#gid=0'
+        },
+        columnMappings: {},
+        teamsDisplayConfig
+      };
+      
+      const result = importConfiguration(createConfigString(config));
+      
+      expect(result.success).toBe(true);
+      expect(mockSaveTeamsDisplayConfig).toHaveBeenCalledWith('abc123_0', teamsDisplayConfig);
+      expect(mockSetTeamsDisplayConfiguration).toHaveBeenCalledWith('abc123_0', teamsDisplayConfig);
     });
 
     it('clears teams sheet when not in config', () => {
