@@ -8,7 +8,12 @@ import { loadLocalCSV, getCSVText, encodeCSVForStorage } from '../api/local.js';
 import * as store from '../state/store.js';
 import * as renderer from './renderer.js';
 import { validateTeamsDataWithConfig } from '../validation/schema.js';
-import { exportConfiguration, isExportAvailable } from '../utils/export.js';
+import { 
+  isExportAvailable, 
+  exportConfigToFile, 
+  importConfigFromFile, 
+  shareConfigViaServer 
+} from '../utils/export.js';
 import { t, toggleLanguage, getLanguage, subscribe as subscribeToLanguage } from '../i18n/index.js';
 import { clearAll } from '../storage/persistence.js';
 
@@ -801,60 +806,137 @@ function setupSettingsModal() {
 }
 
 /**
- * Sets up export button
+ * Sets up export/import/share buttons
  */
-function setupExportButton() {
-  const exportBtn = document.getElementById('export-btn');
-  
-  if (!exportBtn) return;
+function setupExportButtons() {
+  const exportFileBtn = document.getElementById('export-file-btn');
+  const importFileBtn = document.getElementById('import-file-btn');
+  const importFileInput = /** @type {HTMLInputElement} */ (document.getElementById('import-config-file-header'));
+  const shareLinkBtn = document.getElementById('share-link-btn');
   
   // Update button visibility based on export availability
-  function updateExportButtonVisibility() {
+  function updateExportButtonsVisibility() {
     const available = isExportAvailable();
-    exportBtn.hidden = !available;
+    if (exportFileBtn) exportFileBtn.hidden = !available;
+    if (importFileBtn) importFileBtn.hidden = !store.hasConfiguredSheets();
+    if (shareLinkBtn) shareLinkBtn.hidden = !available;
   }
   
   // Initial update
-  updateExportButtonVisibility();
+  updateExportButtonsVisibility();
   
   // Update on state changes
-  const unsubscribe = store.subscribe((state, changedKey) => {
+  store.subscribe((state, changedKey) => {
     if (changedKey === 'configuredSheets' || changedKey === 'teamsSheet' || changedKey === 'init') {
-      updateExportButtonVisibility();
+      updateExportButtonsVisibility();
     }
   });
   
-  // Store unsubscribe function (could be used for cleanup if needed)
-  // For now, we keep the subscription active for the app lifetime
-  
-  // Export button click handler
-  exportBtn.addEventListener('click', async () => {
-    const url = exportConfiguration();
+  // Export file button click handler
+  exportFileBtn?.addEventListener('click', () => {
+    const result = exportConfigToFile();
     
-    if (!url) {
-      alert(t('errors.exportUnavailable'));
+    if (!result.success) {
+      alert(result.error || t('errors.exportUnavailable'));
       return;
     }
     
+    // Show success indication
+    showButtonSuccess(exportFileBtn, t('export.exportSuccess'));
+  });
+  
+  // Import file button - triggers file input
+  importFileBtn?.addEventListener('click', () => {
+    importFileInput?.click();
+  });
+  
+  // Import file input change handler
+  importFileInput?.addEventListener('change', async () => {
+    const file = importFileInput.files?.[0];
+    if (!file) return;
+    
+    const result = await importConfigFromFile(file);
+    importFileInput.value = ''; // Reset input
+    
+    if (!result.success) {
+      alert(t('errors.importFailed', { error: result.error }));
+      return;
+    }
+    
+    // Reload page to apply imported config
+    window.location.href = window.location.origin + window.location.pathname;
+  });
+  
+  // Share link button click handler
+  shareLinkBtn?.addEventListener('click', async () => {
+    shareLinkBtn.disabled = true;
+    
     try {
+      const result = await shareConfigViaServer();
+      
+      if (!result.success) {
+        alert(result.error || t('export.shareError'));
+        return;
+      }
+      
       // Copy to clipboard
-      await navigator.clipboard.writeText(url);
-      
-      // Show success notification
-      const originalTitle = exportBtn.getAttribute('title') || '';
-      exportBtn.setAttribute('title', t('export.copied'));
-      exportBtn.style.opacity = '0.7';
-      
-      setTimeout(() => {
-        exportBtn.setAttribute('title', originalTitle);
-        exportBtn.style.opacity = '1';
-      }, 2000);
-    } catch (err) {
-      console.error('[Export] Failed to copy to clipboard:', err);
-      // Fallback: show URL in prompt
-      prompt(t('export.copyPrompt'), url);
+      try {
+        await navigator.clipboard.writeText(result.shareUrl);
+        showButtonSuccess(shareLinkBtn, t('export.shareCopied'));
+      } catch (err) {
+        // Fallback: show URL in prompt
+        prompt(t('export.copyPrompt'), result.shareUrl);
+      }
+    } finally {
+      shareLinkBtn.disabled = false;
     }
   });
+}
+
+/**
+ * Sets up import button in setup modal
+ */
+function setupSetupImportButton() {
+  const importBtn = document.getElementById('import-config-setup');
+  const importFileInput = /** @type {HTMLInputElement} */ (document.getElementById('import-config-file-setup'));
+  
+  // Import button - triggers file input
+  importBtn?.addEventListener('click', () => {
+    importFileInput?.click();
+  });
+  
+  // Import file input change handler
+  importFileInput?.addEventListener('change', async () => {
+    const file = importFileInput.files?.[0];
+    if (!file) return;
+    
+    const result = await importConfigFromFile(file);
+    importFileInput.value = ''; // Reset input
+    
+    if (!result.success) {
+      alert(t('errors.importFailed', { error: result.error }));
+      return;
+    }
+    
+    // Reload page to apply imported config
+    window.location.href = window.location.origin + window.location.pathname;
+  });
+}
+
+/**
+ * Shows success indication on a button
+ * @param {HTMLElement} btn 
+ * @param {string} message 
+ */
+function showButtonSuccess(btn, message) {
+  const originalTitle = btn.getAttribute('title') || '';
+  btn.setAttribute('title', message);
+  btn.style.opacity = '0.7';
+  
+  setTimeout(() => {
+    btn.setAttribute('title', originalTitle);
+    btn.style.opacity = '1';
+  }, 2000);
 }
 
 /**
@@ -1446,7 +1528,8 @@ export function initializeEvents(callbacks) {
   setupUrlValidation();
   setupSheetForm();
   setupSettingsModal();
-  setupExportButton();
+  setupExportButtons();
+  setupSetupImportButton();
   setupRetryButton();
   setupModalBackdrops();
   setupTabs(callbacks.onTabChange);

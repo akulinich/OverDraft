@@ -2,8 +2,10 @@
 FastAPI application entry point.
 """
 
+import asyncio
 import os
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,6 +14,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.api.sheets import router as sheets_router
+from app.api.config import router as config_router, cleanup_expired_configs
 from app.config import get_settings
 from app.services.cache import get_cache
 from app.services.metrics import get_metrics
@@ -24,10 +27,50 @@ API_VERSION = os.environ.get("APP_VERSION", "dev")
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address, default_limits=[settings.rate_limit])
 
+# Background task for cleanup
+cleanup_task = None
+
+
+async def periodic_cleanup():
+    """Run cleanup every hour."""
+    while True:
+        try:
+            removed = cleanup_expired_configs()
+            if removed > 0:
+                print(f"[Cleanup] Removed {removed} expired config(s)")
+        except Exception as e:
+            print(f"[Cleanup] Error: {e}")
+        await asyncio.sleep(3600)  # 1 hour
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup/shutdown events."""
+    global cleanup_task
+    
+    # Startup: run initial cleanup and start periodic task
+    removed = cleanup_expired_configs()
+    if removed > 0:
+        print(f"[Startup] Cleaned up {removed} expired config(s)")
+    
+    cleanup_task = asyncio.create_task(periodic_cleanup())
+    
+    yield
+    
+    # Shutdown: cancel cleanup task
+    if cleanup_task:
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
+
+
 app = FastAPI(
     title="OverDraft API",
     description="Caching proxy for Google Sheets API",
     version=API_VERSION,
+    lifespan=lifespan,
 )
 
 # Add rate limiter to app state
@@ -41,7 +84,7 @@ if settings.cors_allow_all:
         CORSMiddleware,
         allow_origins=["*"],
         allow_credentials=False,  # Must be False when using "*"
-        allow_methods=["GET", "OPTIONS"],
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
         expose_headers=["ETag"],
     )
@@ -51,13 +94,14 @@ else:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "OPTIONS"],
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
         expose_headers=["ETag"],
     )
 
 # Include routers
 app.include_router(sheets_router, prefix="/api")
+app.include_router(config_router, prefix="/api")
 
 
 @app.get("/health")

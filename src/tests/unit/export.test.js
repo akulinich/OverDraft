@@ -56,8 +56,28 @@ Object.defineProperty(window, 'location', {
   writable: true
 });
 
+// Mock config
+vi.mock('../../js/config.js', () => ({
+  config: {
+    apiBaseUrl: 'http://localhost:8000',
+    isDev: true
+  }
+}));
+
+// Mock global fetch
+const mockFetch = vi.fn();
+global.fetch = mockFetch;
+
 // Import after mocks
-import { isExportAvailable, exportConfiguration, importConfiguration } from '../../js/utils/export.js';
+import { 
+  isExportAvailable, 
+  exportConfiguration, 
+  importConfiguration,
+  exportConfigToFile,
+  importConfigFromFile,
+  shareConfigViaServer,
+  loadSharedConfig
+} from '../../js/utils/export.js';
 
 describe('Export Configuration', () => {
   beforeEach(() => {
@@ -706,6 +726,282 @@ describe('Export Configuration', () => {
       expect(mockSaveTeamsLayoutConfig).toHaveBeenCalledWith('def456_1', teamsLayout);
       expect(mockSetColumnMapping).toHaveBeenCalledWith('abc123_0', playersMapping);
       expect(mockSetColumnMapping).toHaveBeenCalledWith('def456_1', teamsMapping);
+    });
+  });
+
+  describe('exportConfigToFile', () => {
+    it('returns error when no configuration to export', () => {
+      mockGetState.mockReturnValue({
+        configuredSheets: []
+      });
+      
+      const result = exportConfigToFile();
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('No configuration to export');
+    });
+
+    it('triggers download when configuration is available', () => {
+      mockGetState.mockReturnValue({
+        configuredSheets: [
+          { sourceType: 'google', spreadsheetId: 'abc123', gid: '0' }
+        ]
+      });
+      mockIsLocalSheet.mockReturnValue(false);
+      
+      // Mock createElement and related DOM operations
+      const mockAnchor = {
+        href: '',
+        download: '',
+        click: vi.fn()
+      };
+      const createElementSpy = vi.spyOn(document, 'createElement').mockReturnValue(mockAnchor);
+      const appendChildSpy = vi.spyOn(document.body, 'appendChild').mockImplementation(() => {});
+      const removeChildSpy = vi.spyOn(document.body, 'removeChild').mockImplementation(() => {});
+      
+      // Mock URL APIs
+      const mockUrl = 'blob:http://localhost/test-blob';
+      const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue(mockUrl);
+      const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+      
+      const result = exportConfigToFile();
+      
+      expect(result.success).toBe(true);
+      expect(mockAnchor.download).toBe('overdraft_config.bin');
+      expect(mockAnchor.click).toHaveBeenCalled();
+      expect(createObjectURLSpy).toHaveBeenCalled();
+      expect(revokeObjectURLSpy).toHaveBeenCalledWith(mockUrl);
+      
+      // Cleanup
+      createElementSpy.mockRestore();
+      appendChildSpy.mockRestore();
+      removeChildSpy.mockRestore();
+      createObjectURLSpy.mockRestore();
+      revokeObjectURLSpy.mockRestore();
+    });
+  });
+
+  describe('importConfigFromFile', () => {
+    function createMockFileWithArrayBuffer(bytes) {
+      // Create a mock file object that has arrayBuffer method
+      // since jsdom's File doesn't support arrayBuffer
+      return {
+        name: 'overdraft_config.bin',
+        type: 'application/octet-stream',
+        arrayBuffer: () => Promise.resolve(bytes.buffer)
+      };
+    }
+
+    function createValidConfigBytes() {
+      // Create config, encode it the same way exportConfigToFile does
+      const config = {
+        version: 2,
+        playersSheet: {
+          spreadsheetId: 'abc123',
+          gid: '0',
+          url: 'https://docs.google.com/spreadsheets/d/abc123/edit#gid=0'
+        },
+        columnMappings: {}
+      };
+      
+      // Encode to base64 (same as buildExportConfig + encodeConfig)
+      const jsonString = JSON.stringify(config);
+      const base64 = btoa(unescape(encodeURIComponent(jsonString)));
+      
+      // Convert base64 to binary (same as exportConfigToFile)
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      return bytes;
+    }
+
+    it('imports valid configuration from file', async () => {
+      const bytes = createValidConfigBytes();
+      const mockFile = createMockFileWithArrayBuffer(bytes);
+      
+      const result = await importConfigFromFile(mockFile);
+      
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+      expect(mockReplaceSheet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceType: 'google',
+          spreadsheetId: 'abc123',
+          gid: '0'
+        })
+      );
+    });
+
+    it('returns error for invalid file content', async () => {
+      const invalidBytes = new Uint8Array([0, 1, 2, 3, 4, 5]);
+      const mockFile = createMockFileWithArrayBuffer(invalidBytes);
+      
+      const result = await importConfigFromFile(mockFile);
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+  });
+
+  describe('shareConfigViaServer', () => {
+    beforeEach(() => {
+      mockFetch.mockReset();
+    });
+
+    it('returns error when no configuration to share', async () => {
+      mockGetState.mockReturnValue({
+        configuredSheets: []
+      });
+      
+      const result = await shareConfigViaServer();
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('No configuration to share');
+    });
+
+    it('shares configuration and returns URL', async () => {
+      mockGetState.mockReturnValue({
+        configuredSheets: [
+          { sourceType: 'google', spreadsheetId: 'abc123', gid: '0' }
+        ]
+      });
+      mockIsLocalSheet.mockReturnValue(false);
+      
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          guid: 'test-guid-12345',
+          expiresAt: '2024-12-31T23:59:59Z'
+        })
+      });
+      
+      const result = await shareConfigViaServer();
+      
+      expect(result.success).toBe(true);
+      expect(result.shareUrl).toContain('share=test-guid-12345');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8000/api/config/share',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        })
+      );
+    });
+
+    it('returns error on server failure', async () => {
+      mockGetState.mockReturnValue({
+        configuredSheets: [
+          { sourceType: 'google', spreadsheetId: 'abc123', gid: '0' }
+        ]
+      });
+      mockIsLocalSheet.mockReturnValue(false);
+      
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({ detail: 'Internal server error' })
+      });
+      
+      const result = await shareConfigViaServer();
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Internal server error');
+    });
+
+    it('returns error on network failure', async () => {
+      mockGetState.mockReturnValue({
+        configuredSheets: [
+          { sourceType: 'google', spreadsheetId: 'abc123', gid: '0' }
+        ]
+      });
+      mockIsLocalSheet.mockReturnValue(false);
+      
+      mockFetch.mockRejectedValue(new Error('Network error'));
+      
+      const result = await shareConfigViaServer();
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Network error');
+    });
+  });
+
+  describe('loadSharedConfig', () => {
+    beforeEach(() => {
+      mockFetch.mockReset();
+    });
+
+    it('loads and imports shared configuration', async () => {
+      const config = {
+        version: 2,
+        playersSheet: {
+          spreadsheetId: 'abc123',
+          gid: '0',
+          url: 'https://docs.google.com/spreadsheets/d/abc123/edit#gid=0'
+        },
+        columnMappings: {}
+      };
+      const jsonString = JSON.stringify(config);
+      const base64 = btoa(unescape(encodeURIComponent(jsonString)));
+      
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          config: base64,
+          createdAt: '2024-01-01T00:00:00Z',
+          expiresAt: '2024-12-31T23:59:59Z'
+        })
+      });
+      
+      const result = await loadSharedConfig('test-guid-12345');
+      
+      expect(result.success).toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:8000/api/config/test-guid-12345');
+      expect(mockReplaceSheet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceType: 'google',
+          spreadsheetId: 'abc123',
+          gid: '0'
+        })
+      );
+    });
+
+    it('returns error for 404 (not found)', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({ detail: 'Not found' })
+      });
+      
+      const result = await loadSharedConfig('invalid-guid');
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('not found');
+    });
+
+    it('returns error for 410 (expired)', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 410,
+        json: () => Promise.resolve({ detail: 'Expired' })
+      });
+      
+      const result = await loadSharedConfig('expired-guid');
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('expired');
+    });
+
+    it('returns error on network failure', async () => {
+      mockFetch.mockRejectedValue(new Error('Network error'));
+      
+      const result = await loadSharedConfig('test-guid');
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Network error');
     });
   });
 });

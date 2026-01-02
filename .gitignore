@@ -58,6 +58,9 @@ dist/
 # Project specific
 output/
 
+# Server data (shared configs)
+server/data/
+
 # Setup script config (contains sensitive paths)
 scripts/.env.setup
 

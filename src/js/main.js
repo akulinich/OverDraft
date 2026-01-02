@@ -975,10 +975,36 @@ async function init() {
     settingsBuildEl.textContent = getBuildInfo();
   }
   
-  // Check for import configuration from URL
+  // Check for import configuration from URL (legacy base64 config or share GUID)
   const urlParams = new URLSearchParams(window.location.search);
   const configParam = urlParams.get('config');
-  if (configParam) {
+  const shareGuid = urlParams.get('share');
+  
+  if (shareGuid) {
+    // Load shared configuration from server
+    const { loadSharedConfig } = await import('./utils/export.js');
+    const result = await loadSharedConfig(shareGuid);
+    
+    if (result.success) {
+      // Remove share parameter from URL without reload
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('share');
+      window.history.replaceState({}, '', newUrl.toString());
+      
+      if (config.isDev) {
+        console.log('[OverDraft] Shared configuration loaded from server');
+      }
+    } else {
+      console.error('[OverDraft] Failed to load shared configuration:', result.error);
+      alert(t('export.expiredLink') + ': ' + (result.error || 'Unknown error'));
+      
+      // Remove invalid share parameter from URL
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('share');
+      window.history.replaceState({}, '', newUrl.toString());
+    }
+  } else if (configParam) {
+    // Legacy: import base64-encoded configuration
     const { importConfiguration } = await import('./utils/export.js');
     const result = importConfiguration(configParam);
     

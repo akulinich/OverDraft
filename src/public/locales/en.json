@@ -182,7 +182,20 @@
   "export": {
     "tooltip": "Export configuration",
     "copied": "Link copied!",
-    "copyPrompt": "Copy this link:"
+    "copyPrompt": "Copy this link:",
+    "exportFile": "Export Config",
+    "importFile": "Import Config",
+    "shareLink": "Share Link",
+    "exportSuccess": "Configuration exported successfully",
+    "importSuccess": "Configuration imported successfully",
+    "shareSuccess": "Share link copied to clipboard!",
+    "shareCopied": "Link copied!",
+    "invalidLink": "Invalid share link",
+    "expiredLink": "Share link has expired",
+    "importFromFile": "Import from file",
+    "selectConfigFile": "Select config file...",
+    "noConfigToExport": "No configuration to export",
+    "shareError": "Failed to create share link"
   },
   "language": {
     "ru": "RU",

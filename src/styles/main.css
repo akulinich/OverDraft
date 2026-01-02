@@ -376,6 +376,17 @@ body::before {
   justify-content: flex-end;
 }
 
+/* Setup modal footer with import button on left */
+.setup-footer {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.setup-footer-left {
+  display: flex;
+  gap: var(--space-sm);
+}
+
 /* Form Elements */
 .input-group {
   display: flex;

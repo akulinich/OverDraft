@@ -119,9 +119,10 @@ MANUAL_INSTRUCTIONS = {
 ║      image: ghcr.io/YOUR_GITHUB_USERNAME/overdraft-api:latest    ║
 ║      expose:                                                     ║
 ║        - "8000"                                                  ║
-║      environment:                                                ║
-║        - GOOGLE_API_KEY=${{GOOGLE_API_KEY}}                       ║
-║        - CACHE_TTL=${{CACHE_TTL:-1}}                              ║
+║      env_file:                                                   ║
+║        - .env                                                    ║
+║      volumes:                                                    ║
+║        - config_data:/app/data/configs                           ║
 ║      restart: unless-stopped                                     ║
 ║                                                                  ║
 ║    caddy:                                                        ║
@@ -140,6 +141,7 @@ MANUAL_INSTRUCTIONS = {
 ║  volumes:                                                        ║
 ║    caddy_data:                                                   ║
 ║    caddy_config:                                                 ║
+║    config_data:                                                  ║
 ║  ─────────────────────────────────────────────────────────────── ║
 ║  Save: Ctrl+O, Enter, Ctrl+X                                     ║
 ╚══════════════════════════════════════════════════════════════════╝
@@ -158,6 +160,7 @@ MANUAL_INSTRUCTIONS = {
 ║  CACHE_TTL=1                                                     ║
 ║  CORS_ORIGINS=["https://yourdomain.com"]                         ║
 ║  RATE_LIMIT=60/minute                                            ║
+║  CONFIG_STORAGE_PATH=/app/data/configs                           ║
 ║  ─────────────────────────────────────────────────────────────── ║
 ║  Save: Ctrl+O, Enter, Ctrl+X                                     ║
 ╚══════════════════════════════════════════════════════════════════╝
@@ -503,6 +506,8 @@ class VPSSetup:
       - "8000"
     env_file:
       - .env
+    volumes:
+      - config_data:/app/data/configs
     restart: unless-stopped
 
   caddy:
@@ -522,6 +527,7 @@ class VPSSetup:
 volumes:
   caddy_data:
   caddy_config:
+  config_data:
 '''
         else:
             content = f'''services:
@@ -531,7 +537,12 @@ volumes:
       - "8000:8000"
     env_file:
       - .env
+    volumes:
+      - config_data:/app/data/configs
     restart: unless-stopped
+
+volumes:
+  config_data:
 '''
         
         cmd = f"cat > ~/overdraft/docker-compose.yml << 'EOF'\n{content}EOF"
@@ -567,6 +578,7 @@ volumes:
 CACHE_TTL={self.config.cache_ttl}
 CORS_ORIGINS={cors_value}
 RATE_LIMIT={self.config.rate_limit}
+CONFIG_STORAGE_PATH=/app/data/configs
 """
         
         cmd = f"cat > ~/overdraft/.env << 'EOF'\n{content}EOF"

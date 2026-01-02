@@ -145,7 +145,18 @@
           </div>
         </div>
 
-        <div class="modal-footer">
+        <div class="modal-footer setup-footer">
+          <div class="setup-footer-left">
+            <button id="import-config-setup" class="btn btn-secondary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span data-i18n="export.importFile">Импорт конфига</span>
+            </button>
+            <input type="file" id="import-config-file-setup" accept=".bin,.json" hidden>
+          </div>
           <button id="confirm-sheet" class="btn btn-primary" disabled>
             <span class="btn-text" data-i18n="setup.connect">Подключить</span>
             <span class="btn-loader" hidden></span>
@@ -396,11 +407,28 @@
         </h1>
       </div>
       <div class="header-right">
-        <button id="export-btn" class="btn-icon" aria-label="Export configuration" data-i18n-title="export.tooltip" title="Экспортировать конфигурацию" hidden>
+        <button id="export-file-btn" class="btn-icon" aria-label="Export configuration" title="Export Config" hidden>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </button>
+        <button id="import-file-btn" class="btn-icon" aria-label="Import configuration" title="Import Config" hidden>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
+        <input type="file" id="import-config-file-header" accept=".bin,.json" hidden>
+        <button id="share-link-btn" class="btn-icon" aria-label="Share link" title="Share Link" hidden>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="18" cy="5" r="3"/>
+            <circle cx="6" cy="12" r="3"/>
+            <circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
           </svg>
         </button>
         <button id="language-btn" class="btn-lang" aria-label="Change language">
