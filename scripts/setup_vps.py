@@ -161,6 +161,7 @@ MANUAL_INSTRUCTIONS = {
 ║  CACHE_TTL=1                                                     ║
 ║  CORS_ORIGINS=["https://yourdomain.com"]                         ║
 ║  RATE_LIMIT=60/minute                                            ║
+║  GOOGLE_RATE_LIMIT=60/minute                                     ║
 ║  CONFIG_STORAGE_PATH=/app/data/configs                           ║
 ║  ─────────────────────────────────────────────────────────────── ║
 ║  Save: Ctrl+O, Enter, Ctrl+X                                     ║
@@ -602,6 +603,7 @@ volumes:
 CACHE_TTL={self.config.cache_ttl}
 CORS_ORIGINS={cors_value}
 RATE_LIMIT={self.config.rate_limit}
+GOOGLE_RATE_LIMIT=60/minute
 CONFIG_STORAGE_PATH=/app/data/configs
 """
 
@@ -615,6 +617,7 @@ CONFIG_STORAGE_PATH=/app/data/configs
             "CACHE_TTL", 
             "CORS_ORIGINS",
             "RATE_LIMIT",
+            "GOOGLE_RATE_LIMIT",
             "CONFIG_STORAGE_PATH",
         ]
         

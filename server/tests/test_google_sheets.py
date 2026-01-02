@@ -221,6 +221,78 @@ class TestSheetExtraction:
         assert result is None
 
 
+class TestRateLimiter:
+    """Tests for rate limiter behavior."""
+    
+    @pytest.mark.asyncio
+    async def test_rate_limiter_allows_requests_under_limit(self):
+        """Should allow requests when under limit."""
+        from app.services.google_sheets import RateLimiter
+        
+        limiter = RateLimiter(max_requests=5, window_seconds=1.0)
+        
+        # Should allow 5 requests immediately
+        for _ in range(5):
+            await limiter.acquire()
+        
+        assert limiter.current_count == 5
+    
+    @pytest.mark.asyncio
+    async def test_rate_limiter_tracks_count(self):
+        """Should track current request count."""
+        from app.services.google_sheets import RateLimiter
+        
+        limiter = RateLimiter(max_requests=10, window_seconds=60.0)
+        
+        assert limiter.current_count == 0
+        
+        await limiter.acquire()
+        assert limiter.current_count == 1
+        
+        await limiter.acquire()
+        assert limiter.current_count == 2
+
+
+class TestParseRateLimit:
+    """Tests for rate limit string parsing."""
+    
+    def test_parse_per_minute(self):
+        """Should parse requests per minute."""
+        count, seconds = GoogleSheetsClient._parse_rate_limit("60/minute")
+        assert count == 60
+        assert seconds == 60.0
+    
+    def test_parse_per_second(self):
+        """Should parse requests per second."""
+        count, seconds = GoogleSheetsClient._parse_rate_limit("10/second")
+        assert count == 10
+        assert seconds == 1.0
+    
+    def test_parse_per_hour(self):
+        """Should parse requests per hour."""
+        count, seconds = GoogleSheetsClient._parse_rate_limit("1000/hour")
+        assert count == 1000
+        assert seconds == 3600.0
+    
+    def test_parse_case_insensitive(self):
+        """Should handle mixed case period."""
+        count, seconds = GoogleSheetsClient._parse_rate_limit("30/Minute")
+        assert count == 30
+        assert seconds == 60.0
+    
+    def test_parse_invalid_format_defaults(self):
+        """Should default to 60/minute for invalid format."""
+        count, seconds = GoogleSheetsClient._parse_rate_limit("invalid")
+        assert count == 60
+        assert seconds == 60.0
+    
+    def test_parse_empty_defaults(self):
+        """Should default for empty string."""
+        count, seconds = GoogleSheetsClient._parse_rate_limit("")
+        assert count == 60
+        assert seconds == 60.0
+
+
 class TestSingleSheetParsing:
     """Tests for parsing single sheet response."""
     

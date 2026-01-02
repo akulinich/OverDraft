@@ -2,10 +2,13 @@
 Google Sheets API client.
 Fetches only specific sheets instead of entire document.
 Includes request coalescing to prevent duplicate API calls.
+Rate limited to 60 requests per minute to Google API.
 """
 
 import asyncio
+import time
 import httpx
+from collections import deque
 from typing import Any
 
 from app.config import get_settings
@@ -21,6 +24,53 @@ class GoogleSheetsError(Exception):
         self.gid = gid
 
 
+class RateLimiter:
+    """
+    Sliding window rate limiter for Google API requests.
+    
+    Limits requests to max_requests per window_seconds.
+    If limit is exceeded, waits until a slot becomes available.
+    """
+    
+    def __init__(self, max_requests: int = 60, window_seconds: float = 60.0):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._timestamps: deque[float] = deque()
+        self._lock = asyncio.Lock()
+    
+    async def acquire(self) -> None:
+        """
+        Acquire a rate limit slot. Waits if limit is exceeded.
+        """
+        async with self._lock:
+            now = time.time()
+            
+            # Remove timestamps outside the window
+            while self._timestamps and now - self._timestamps[0] > self.window_seconds:
+                self._timestamps.popleft()
+            
+            # If at limit, wait until oldest request expires
+            if len(self._timestamps) >= self.max_requests:
+                wait_time = self._timestamps[0] + self.window_seconds - now
+                if wait_time > 0:
+                    await asyncio.sleep(wait_time)
+                    # Clean up again after waiting
+                    now = time.time()
+                    while self._timestamps and now - self._timestamps[0] > self.window_seconds:
+                        self._timestamps.popleft()
+            
+            # Record this request
+            self._timestamps.append(time.time())
+    
+    @property
+    def current_count(self) -> int:
+        """Get current number of requests in the window."""
+        now = time.time()
+        while self._timestamps and now - self._timestamps[0] > self.window_seconds:
+            self._timestamps.popleft()
+        return len(self._timestamps)
+
+
 class GoogleSheetsClient:
     """
     Client for fetching data from Google Sheets API.
@@ -29,6 +79,7 @@ class GoogleSheetsClient:
     1. Fetch metadata (gid→name mapping) once, cache it longer
     2. Fetch only specific sheet data using ranges parameter
     3. Request coalescing per (spreadsheet_id, gid) pair
+    4. Rate limiting: configurable via GOOGLE_RATE_LIMIT env var
     """
     
     BASE_URL = "https://sheets.googleapis.com/v4/spreadsheets"
@@ -41,6 +92,35 @@ class GoogleSheetsClient:
         self._pending_requests: dict[tuple[str, str], asyncio.Task] = {}
         # Cache for metadata (gid → sheet name): key = spreadsheet_id
         self._metadata_cache: dict[str, tuple[dict[str, str], float]] = {}
+        # Parse rate limit from config (format: "60/minute")
+        max_requests, window_seconds = self._parse_rate_limit(self.settings.google_rate_limit)
+        self._rate_limit_requests = max_requests
+        self._rate_limit_window = window_seconds
+        # Rate limiter for Google API requests
+        self._rate_limiter = RateLimiter(max_requests, window_seconds)
+    
+    @staticmethod
+    def _parse_rate_limit(rate_limit: str) -> tuple[int, float]:
+        """
+        Parse rate limit string like "60/minute" into (count, seconds).
+        
+        Supports: /second, /minute, /hour
+        """
+        try:
+            count_str, period = rate_limit.split("/")
+            count = int(count_str)
+            
+            period_seconds = {
+                "second": 1.0,
+                "minute": 60.0,
+                "hour": 3600.0,
+            }
+            
+            seconds = period_seconds.get(period.lower(), 60.0)
+            return count, seconds
+        except (ValueError, AttributeError):
+            # Default to 60/minute
+            return 60, 60.0
     
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
@@ -55,7 +135,6 @@ class GoogleSheetsClient:
     
     def _get_cached_metadata(self, spreadsheet_id: str) -> dict[str, str] | None:
         """Get cached gid→name mapping if not expired."""
-        import time
         if spreadsheet_id not in self._metadata_cache:
             return None
         mapping, expires_at = self._metadata_cache[spreadsheet_id]
@@ -66,7 +145,6 @@ class GoogleSheetsClient:
     
     def _cache_metadata(self, spreadsheet_id: str, mapping: dict[str, str]):
         """Cache gid→name mapping."""
-        import time
         expires_at = time.time() + self.METADATA_TTL
         self._metadata_cache[spreadsheet_id] = (mapping, expires_at)
     
@@ -133,7 +211,9 @@ class GoogleSheetsClient:
                 gid
             )
         
-        # Step 2: Fetch only this sheet's data
+        # Step 2: Fetch only this sheet's data (rate limited)
+        await self._rate_limiter.acquire()
+        
         client = await self._get_client()
         
         # Use ranges parameter to fetch only specific sheet
@@ -183,7 +263,9 @@ class GoogleSheetsClient:
         if cached is not None:
             return cached.get(gid)
         
-        # Fetch metadata (without grid data - fast!)
+        # Fetch metadata (without grid data - fast!) - rate limited
+        await self._rate_limiter.acquire()
+        
         client = await self._get_client()
         
         url = f"{self.BASE_URL}/{spreadsheet_id}"
@@ -344,6 +426,15 @@ class GoogleSheetsClient:
         return {
             "spreadsheetId": spreadsheet_id,
             "sheets": {gid: {"title": name, "headers": [], "data": []} for gid, name in cached.items()}
+        }
+    
+    @property
+    def rate_limit_status(self) -> dict[str, Any]:
+        """Get current rate limit status for monitoring."""
+        return {
+            "current_requests": self._rate_limiter.current_count,
+            "max_requests": self.RATE_LIMIT_REQUESTS,
+            "window_seconds": self.RATE_LIMIT_WINDOW
         }
 
 
