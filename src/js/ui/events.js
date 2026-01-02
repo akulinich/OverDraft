@@ -2,7 +2,7 @@
  * Event handlers and DOM interactions
  */
 
-import { parseSheetUrl, validateSheetUrl } from '../utils/parser.js';
+import { parseSheetUrl, validateSheetUrl, validateSameDocument } from '../utils/parser.js';
 import { fetchSheet, SheetError } from '../api/sheets.js';
 import { loadLocalCSV, getCSVText, encodeCSVForStorage } from '../api/local.js';
 import * as store from '../state/store.js';
@@ -617,6 +617,15 @@ function setupSheetForm() {
         if (!parsed) return;
         
         const teamsParsed = teamsUrl ? parseSheetUrl(teamsUrl) : null;
+        
+        // Validate same document invariant
+        if (teamsParsed) {
+          const sameDocValidation = validateSameDocument(parsed.spreadsheetId, teamsParsed.spreadsheetId);
+          if (!sameDocValidation.valid) {
+            showSetupError(t('errors.sheetsMustBeSameDocument'), false);
+            return;
+          }
+        }
         
         // Try to fetch the sheet to validate access
         await fetchSheet(parsed.spreadsheetId, parsed.gid);

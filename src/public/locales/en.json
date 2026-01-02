@@ -157,6 +157,7 @@
     "fileEmpty": "File contains no data",
     "fileReadError": "File read error",
     "teamsConnectionFailed": "Failed to connect teams sheet",
+    "sheetsMustBeSameDocument": "Players and Teams sheets must be from the same Google Sheets document",
     "importFailed": "Failed to import configuration: {error}",
     "exportUnavailable": "Export unavailable. Make sure you are using Google Sheets, not local CSV files.",
     "retry": "Retry",

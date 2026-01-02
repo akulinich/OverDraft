@@ -69,3 +69,4 @@ class TestSheetCache:
         cache.set("s2", "0", {"headers": [], "data": []})
         assert cache.size() == 2
 
+

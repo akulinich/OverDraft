@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSheetUrl, validateSheetUrl, getSheetKey } from '../../js/utils/parser.js';
+import { parseSheetUrl, validateSheetUrl, getSheetKey, validateSameDocument } from '../../js/utils/parser.js';
 
 describe('parseSheetUrl', () => {
   it('extracts spreadsheetId and gid from full URL', () => {
@@ -90,6 +90,30 @@ describe('getSheetKey', () => {
     expect(key).toBe('ABC123_');
   });
 });
+
+describe('validateSameDocument', () => {
+  it('returns valid when spreadsheetIds are the same', () => {
+    const result = validateSameDocument('ABC123', 'ABC123');
+    expect(result).toEqual({ valid: true });
+  });
+
+  it('returns error when spreadsheetIds are different', () => {
+    const result = validateSameDocument('ABC123', 'DEF456');
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe('sheetsMustBeSameDocument');
+  });
+
+  it('returns error for empty vs non-empty spreadsheetId', () => {
+    const result = validateSameDocument('ABC123', '');
+    expect(result.valid).toBe(false);
+  });
+
+  it('returns valid for both empty spreadsheetIds', () => {
+    const result = validateSameDocument('', '');
+    expect(result).toEqual({ valid: true });
+  });
+});
+
 
 
 

@@ -42,7 +42,8 @@ vi.mock('../../js/storage/persistence.js', () => ({
 
 // Mock parser
 vi.mock('../../js/utils/parser.js', () => ({
-  getSheetKey: (spreadsheetId, gid) => `${spreadsheetId}_${gid}`
+  getSheetKey: (spreadsheetId, gid) => `${spreadsheetId}_${gid}`,
+  validateSameDocument: (id1, id2) => id1 === id2 ? { valid: true } : { valid: false, error: 'sheetsMustBeSameDocument' }
 }));
 
 // Mock window.location
@@ -62,6 +63,11 @@ vi.mock('../../js/config.js', () => ({
     apiBaseUrl: 'http://localhost:8000',
     isDev: true
   }
+}));
+
+// Mock i18n
+vi.mock('../../js/i18n/index.js', () => ({
+  t: (key) => key
 }));
 
 // Mock global fetch
@@ -433,9 +439,9 @@ describe('Export Configuration', () => {
           url: 'https://docs.google.com/spreadsheets/d/abc123/edit#gid=0'
         },
         teamsSheet: {
-          spreadsheetId: 'def456',
+          spreadsheetId: 'abc123',
           gid: '1',
-          url: 'https://docs.google.com/spreadsheets/d/def456/edit#gid=1'
+          url: 'https://docs.google.com/spreadsheets/d/abc123/edit#gid=1'
         },
         columnMappings: {}
       };
@@ -446,7 +452,7 @@ describe('Export Configuration', () => {
       expect(mockSetTeamsSheet).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceType: 'google',
-          spreadsheetId: 'def456',
+          spreadsheetId: 'abc123',
           gid: '1'
         })
       );
@@ -472,9 +478,9 @@ describe('Export Configuration', () => {
           url: 'https://docs.google.com/spreadsheets/d/abc123/edit#gid=0'
         },
         teamsSheet: {
-          spreadsheetId: 'def456',
+          spreadsheetId: 'abc123',
           gid: '1',
-          url: 'https://docs.google.com/spreadsheets/d/def456/edit#gid=1'
+          url: 'https://docs.google.com/spreadsheets/d/abc123/edit#gid=1'
         },
         teamsLayout,
         columnMappings: {}
@@ -483,7 +489,7 @@ describe('Export Configuration', () => {
       const result = importConfiguration(createConfigString(config));
       
       expect(result.success).toBe(true);
-      expect(mockSaveTeamsLayoutConfig).toHaveBeenCalledWith('def456_1', teamsLayout);
+      expect(mockSaveTeamsLayoutConfig).toHaveBeenCalledWith('abc123_1', teamsLayout);
     });
 
     it('imports configuration with column mappings', () => {
@@ -625,6 +631,28 @@ describe('Export Configuration', () => {
       expect(result.error).toBeDefined();
     });
 
+    it('returns error when players and teams sheets are from different documents', () => {
+      const config = {
+        version: 1,
+        playersSheet: {
+          spreadsheetId: 'abc123',
+          gid: '0',
+          url: 'https://docs.google.com/spreadsheets/d/abc123/edit#gid=0'
+        },
+        teamsSheet: {
+          spreadsheetId: 'different_document',
+          gid: '1',
+          url: 'https://docs.google.com/spreadsheets/d/different_document/edit#gid=1'
+        },
+        columnMappings: {}
+      };
+      
+      const result = importConfiguration(createConfigString(config));
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+
     it('imports full configuration with all options', () => {
       const config = {
         version: 1,
@@ -634,9 +662,9 @@ describe('Export Configuration', () => {
           url: 'https://docs.google.com/spreadsheets/d/abc123/edit#gid=0'
         },
         teamsSheet: {
-          spreadsheetId: 'def456',
+          spreadsheetId: 'abc123',
           gid: '1',
-          url: 'https://docs.google.com/spreadsheets/d/def456/edit#gid=1'
+          url: 'https://docs.google.com/spreadsheets/d/abc123/edit#gid=1'
         },
         teamsLayout: {
           startRow: 2,
@@ -655,7 +683,7 @@ describe('Export Configuration', () => {
             rating: 'Рейтинг',
             heroes: 'Герои'
           },
-          'def456_1': {
+          'abc123_1': {
             nickname: 'Игрок',
             role: 'Роль',
             rating: 'SR',
@@ -676,7 +704,7 @@ describe('Export Configuration', () => {
 
   describe('Export/Import round-trip', () => {
     it('preserves configuration through export and import', () => {
-      // Setup for export
+      // Setup for export - both sheets from same document
       mockGetState.mockReturnValue({
         configuredSheets: [
           { sourceType: 'google', spreadsheetId: 'abc123', gid: '0' }
@@ -684,7 +712,7 @@ describe('Export Configuration', () => {
       });
       mockGetTeamsSheet.mockReturnValue({
         sourceType: 'google',
-        spreadsheetId: 'def456',
+        spreadsheetId: 'abc123',
         gid: '1'
       });
       mockIsLocalSheet.mockReturnValue(false);
@@ -704,7 +732,7 @@ describe('Export Configuration', () => {
       
       mockGetColumnMapping.mockImplementation((key) => {
         if (key === 'abc123_0') return playersMapping;
-        if (key === 'def456_1') return teamsMapping;
+        if (key === 'abc123_1') return teamsMapping;
         return null;
       });
       mockLoadTeamsLayoutConfig.mockReturnValue(teamsLayout);
@@ -723,9 +751,9 @@ describe('Export Configuration', () => {
       expect(result.success).toBe(true);
       expect(mockReplaceSheet).toHaveBeenCalled();
       expect(mockSetTeamsSheet).toHaveBeenCalled();
-      expect(mockSaveTeamsLayoutConfig).toHaveBeenCalledWith('def456_1', teamsLayout);
+      expect(mockSaveTeamsLayoutConfig).toHaveBeenCalledWith('abc123_1', teamsLayout);
       expect(mockSetColumnMapping).toHaveBeenCalledWith('abc123_0', playersMapping);
-      expect(mockSetColumnMapping).toHaveBeenCalledWith('def456_1', teamsMapping);
+      expect(mockSetColumnMapping).toHaveBeenCalledWith('abc123_1', teamsMapping);
     });
   });
 

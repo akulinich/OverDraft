@@ -10,7 +10,8 @@ import {
   saveColumnsConfiguration,
   saveTeamsDisplayConfig
 } from '../storage/persistence.js';
-import { getSheetKey } from './parser.js';
+import { getSheetKey, validateSameDocument } from './parser.js';
+import { t } from '../i18n/index.js';
 
 const EXPORT_VERSION = 2;
 const CONFIG_FILE_NAME = 'overdraft_config.bin';
@@ -347,6 +348,20 @@ export function importConfiguration(configString) {
     
     if (!config.playersSheet || !config.playersSheet.spreadsheetId || !config.playersSheet.gid) {
       return { success: false, error: 'Invalid config format: missing players sheet' };
+    }
+    
+    // Validate same document invariant
+    if (config.teamsSheet && config.teamsSheet.spreadsheetId) {
+      const sameDocValidation = validateSameDocument(
+        config.playersSheet.spreadsheetId, 
+        config.teamsSheet.spreadsheetId
+      );
+      if (!sameDocValidation.valid) {
+        return { 
+          success: false, 
+          error: t('errors.sheetsMustBeSameDocument') 
+        };
+      }
     }
     
     // Import players sheet

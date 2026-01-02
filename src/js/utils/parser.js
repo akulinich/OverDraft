@@ -74,4 +74,20 @@ export function getSheetKey(spreadsheetId, gid) {
   return `${spreadsheetId}_${gid}`;
 }
 
+/**
+ * Validates that two sheets are from the same document
+ * @param {string} spreadsheetId1 
+ * @param {string} spreadsheetId2 
+ * @returns {{valid: boolean, error?: string}}
+ */
+export function validateSameDocument(spreadsheetId1, spreadsheetId2) {
+  if (spreadsheetId1 !== spreadsheetId2) {
+    return { 
+      valid: false, 
+      error: 'sheetsMustBeSameDocument'
+    };
+  }
+  return { valid: true };
+}
+
 
