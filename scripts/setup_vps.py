@@ -160,7 +160,7 @@ MANUAL_INSTRUCTIONS = {
 ║  GOOGLE_API_KEY=your_google_api_key_here                         ║
 ║  CACHE_TTL=1                                                     ║
 ║  CORS_ORIGINS=["https://yourdomain.com"]                         ║
-║  RATE_LIMIT=90/minute                                            ║
+║  RATE_LIMIT=1000/minute                                          ║
 ║  CONFIG_STORAGE_PATH=/app/data/configs                           ║
 ║  ─────────────────────────────────────────────────────────────── ║
 ║  Save: Ctrl+O, Enter, Ctrl+X                                     ║
@@ -295,7 +295,7 @@ class VPSConfig:
     domain: str | None = None
     cache_ttl: int = 1  # seconds
     cors_origins: list[str] | None = None
-    rate_limit: str = "60/minute"
+    rate_limit: str = "1000/minute"
 
 
 class VPSSetup:
@@ -624,9 +624,27 @@ CONFIG_STORAGE_PATH=/app/data/configs
             # Check for missing variables
             missing_vars = [var for var in required_vars if var not in current]
             
+            # Check for outdated RATE_LIMIT value
+            outdated_rate_limit = False
+            if "RATE_LIMIT=" in current:
+                # Extract current value
+                for line in current.split("\n"):
+                    if line.startswith("RATE_LIMIT="):
+                        current_rate = line.split("=", 1)[1].strip()
+                        # Old values that should be updated
+                        if current_rate in ("60/minute", "90/minute"):
+                            outdated_rate_limit = True
+                        break
+            
+            issues = []
             if missing_vars:
-                missing_str = ", ".join(missing_vars)
-                if not self.prompt_update(".env", f"missing: {missing_str}"):
+                issues.append(f"missing: {', '.join(missing_vars)}")
+            if outdated_rate_limit:
+                issues.append(f"outdated RATE_LIMIT (should be {self.config.rate_limit})")
+            
+            if issues:
+                reason = "; ".join(issues)
+                if not self.prompt_update(".env", reason):
                     logger.info("  ⏭ Skipped update")
                     return True
                 
@@ -636,7 +654,7 @@ CONFIG_STORAGE_PATH=/app/data/configs
                 exit_code, _, _ = self.run_command(cmd)
                 
                 if exit_code == 0:
-                    logger.info(f"  ✓ Updated .env (added: {missing_str})")
+                    logger.info(f"  ✓ Updated .env ({reason})")
                 else:
                     logger.error("  ✗ Failed to update .env")
                     print(MANUAL_INSTRUCTIONS["create_env"])
@@ -1065,7 +1083,7 @@ def load_env_config() -> dict[str, str]:
         config["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY", "")
         config["DOMAIN"] = os.getenv("DOMAIN", "")
         config["CORS_ORIGINS"] = os.getenv("CORS_ORIGINS", "")
-        config["RATE_LIMIT"] = os.getenv("RATE_LIMIT", "60/minute")
+        config["RATE_LIMIT"] = os.getenv("RATE_LIMIT", "1000/minute")
         config["CACHE_TTL"] = os.getenv("CACHE_TTL", "1")
     else:
         print(f"ℹ No .env.setup found at {env_file}")
@@ -1198,7 +1216,7 @@ def main():
     
     rate_limit = prompt(
         "Rate limit",
-        default="60/minute",
+        default="1000/minute",
         env_value=env_config.get("RATE_LIMIT") or None
     )
     
