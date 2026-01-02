@@ -16,7 +16,8 @@ import { getSheetKey } from './utils/parser.js';
 import { 
   loadTeamsLayoutConfig, 
   saveTeamsLayoutConfig, 
-  getDefaultTeamsLayoutConfig 
+  getDefaultTeamsLayoutConfig,
+  createDefaultColumnsConfiguration
 } from './storage/persistence.js';
 import { init as initI18n, t, subscribe as subscribeToLanguage } from './i18n/index.js';
 
@@ -40,6 +41,35 @@ let isTeamsLayoutPending = false;
 
 /** @type {{headers: string[], data: string[][], allRows: string[][]}|null} Pending teams data waiting for layout config */
 let pendingTeamsData = null;
+
+/** @type {boolean} Flag indicating if we're in "reconfigure all" mode (show all config modals) */
+let isReconfigureAllMode = false;
+
+/**
+ * Renders teams with dynamic column configuration
+ * @param {string[]} headers - Teams sheet headers
+ * @param {string[][]} data - Teams sheet data
+ * @param {import('./storage/persistence.js').TeamsLayoutConfig} layoutConfig
+ */
+async function renderTeamsWithConfig(headers, data, layoutConfig) {
+  const sheet = store.getFirstSheet();
+  if (!sheet) {
+    await renderer.renderTeamsView(headers, data, layoutConfig);
+    return;
+  }
+  
+  const playerSheetKey = getSheetKey(sheet.spreadsheetId, sheet.gid);
+  const columnsConfig = store.getColumnsConfiguration(playerSheetKey);
+  const displayConfig = store.getTeamsDisplayConfiguration(playerSheetKey);
+  
+  if (columnsConfig) {
+    const cachedPlayerData = store.getSheetData(sheet.spreadsheetId, sheet.gid);
+    const playerHeaders = cachedPlayerData?.headers || [];
+    await renderer.renderTeamsViewWithConfig(headers, data, layoutConfig, playerHeaders, columnsConfig, displayConfig);
+  } else {
+    await renderer.renderTeamsView(headers, data, layoutConfig);
+  }
+}
 
 /**
  * Loads local CSV data from localStorage
@@ -65,8 +95,9 @@ function loadLocalSheetData(sheet) {
 /**
  * Fetches and renders players sheet data
  * @param {boolean} [skipColumnValidation=false] - Skip column validation (used after mapping confirmed)
+ * @param {boolean} [forceShowConfigModal=false] - Force show config modal even if config exists
  */
-async function fetchAndRenderPlayers(skipColumnValidation = false) {
+async function fetchAndRenderPlayers(skipColumnValidation = false, forceShowConfigModal = false) {
   const sheet = store.getFirstSheet();
   if (!sheet) return;
   
@@ -89,30 +120,30 @@ async function fetchAndRenderPlayers(skipColumnValidation = false) {
     }
     
     const sheetKey = getSheetKey(sheet.spreadsheetId, sheet.gid);
+    const existingConfig = store.getColumnsConfiguration(sheetKey);
     
-    // Check if column mapping is needed (only on first load or when not skipped)
-    if (!skipColumnValidation) {
-      const existingMapping = store.getColumnMapping(sheetKey);
-      const validation = store.validateRequiredColumns(data.headers, data.data, existingMapping);
+    // Show config modal if:
+    // 1. forceShowConfigModal is true (user clicked "Connect and Configure")
+    // 2. OR no config exists and not skipping validation
+    const shouldShowModal = forceShowConfigModal || (!skipColumnValidation && !existingConfig);
+    
+    if (shouldShowModal) {
+      isColumnMappingPending = true;
+      pendingSheetData = { headers: data.headers, data: data.data };
       
-      if (!validation.valid) {
-        // Show column mapping modal
-        isColumnMappingPending = true;
-        pendingSheetData = { headers: data.headers, data: data.data };
-        
-        if (config.isDev) {
-          console.log('[App] Column mapping needed:', validation);
-        }
-        
-        events.openColumnMappingModal(
-          data.headers, 
-          data.data, 
-          validation.detected, 
-          validation.missing, 
-          validation.errors
-        );
-        return;
+      if (config.isDev) {
+        console.log('[App] Column configuration modal opening', existingConfig ? '(existing config)' : '(new config)');
       }
+      
+      // Use existing config if available, otherwise create default
+      const configToShow = existingConfig || createDefaultColumnsConfiguration();
+      
+      events.openColumnConfigModal(
+        data.headers, 
+        data.data, 
+        configToShow
+      );
+      return;
     }
     
     store.updateSheetData(data);
@@ -158,13 +189,44 @@ function computePlayerDetailsHash(player) {
 }
 
 /**
+ * Updates filter visibility based on current configuration
+ */
+function updateFilterVisibility() {
+  const sheet = store.getFirstSheet();
+  const sheetKey = sheet ? getSheetKey(sheet.spreadsheetId, sheet.gid) : null;
+  
+  // Available filter only shown when teams sheet is connected
+  renderer.updateAvailableFilterVisibility(store.hasTeamsSheet());
+  
+  // Role filters only shown when at least one role column is configured
+  const hasRoles = sheetKey ? store.hasRoleColumns(sheetKey) : false;
+  renderer.updateRoleFiltersVisibility(hasRoles);
+  
+  renderer.updateFilterButtonStates();
+}
+
+/**
  * Renders players panel with table and details
  * @param {string[]} headers
  * @param {string[][]} data
  * @param {import('./validation/schema.js').Team[]} teams
  */
 function renderPlayersPanel(headers, data, teams) {
-  renderer.renderPlayersTable(headers, data, teams);
+  // Get columns configuration for current sheet
+  const sheet = store.getFirstSheet();
+  const sheetKey = sheet ? getSheetKey(sheet.spreadsheetId, sheet.gid) : null;
+  const columnsConfig = sheetKey ? store.getColumnsConfiguration(sheetKey) : null;
+  
+  // Update filter visibility based on config
+  updateFilterVisibility();
+  
+  if (columnsConfig && columnsConfig.columns.length > 0) {
+    // Use new dynamic columns configuration
+    renderer.renderPlayersTableWithConfig(headers, data, columnsConfig, teams);
+  } else {
+    // Fallback to legacy rendering
+    renderer.renderPlayersTable(headers, data, teams);
+  }
   
   // Try to keep currently selected player
   const currentPlayer = store.getSelectedPlayer();
@@ -192,7 +254,11 @@ function renderPlayersPanel(headers, data, teams) {
       // Only re-render details if data changed
       if (newHash !== lastPlayerDetailsHash) {
         lastPlayerDetailsHash = newHash;
-        renderer.renderPlayerDetailsPanel(freshPlayer || currentPlayer, headers);
+        if (columnsConfig && columnsConfig.columns.length > 0) {
+          renderer.renderPlayerDetailsPanelWithConfig(freshPlayer || currentPlayer, headers, columnsConfig);
+        } else {
+          renderer.renderPlayerDetailsPanel(freshPlayer || currentPlayer, headers);
+        }
       }
       
       renderer.updatePlayerRowSelection(currentRowIndex);
@@ -209,7 +275,11 @@ function renderPlayersPanel(headers, data, teams) {
     const newHash = computePlayerDetailsHash(firstPlayer);
     if (newHash !== lastPlayerDetailsHash) {
       lastPlayerDetailsHash = newHash;
-      renderer.renderPlayerDetailsPanel(firstPlayer, headers);
+      if (columnsConfig && columnsConfig.columns.length > 0) {
+        renderer.renderPlayerDetailsPanelWithConfig(firstPlayer, headers, columnsConfig);
+      } else {
+        renderer.renderPlayerDetailsPanel(firstPlayer, headers);
+      }
     }
     
     renderer.updatePlayerRowSelection(0);
@@ -318,7 +388,7 @@ async function fetchAndRenderTeams(skipLayoutValidation = false) {
     
     // Render teams if on teams tab
     if (store.getActiveTab() === 'teams') {
-      await renderer.renderTeamsView(data.headers, data.data, layoutConfig);
+      await renderTeamsWithConfig(data.headers, data.data, layoutConfig);
     }
     
   } catch (err) {
@@ -340,10 +410,10 @@ async function onTeamsLayoutConfirmed(layoutConfig) {
   const teamsSheet = store.getTeamsSheet();
   if (!teamsSheet || !pendingTeamsData) return;
   
-  const sheetKey = getSheetKey(teamsSheet.spreadsheetId, teamsSheet.gid);
+  const teamsSheetKey = getSheetKey(teamsSheet.spreadsheetId, teamsSheet.gid);
   
-  // Save the config
-  saveTeamsLayoutConfig(sheetKey, layoutConfig);
+  // Save the layout config
+  saveTeamsLayoutConfig(teamsSheetKey, layoutConfig);
   
   // Update teams data in store
   store.updateTeamsData({
@@ -356,12 +426,34 @@ async function onTeamsLayoutConfirmed(layoutConfig) {
   
   pendingTeamsData = null;
   
+  // Check if teams display config exists, if not - open the modal
+  const sheet = store.getFirstSheet();
+  const playerSheetKey = sheet ? getSheetKey(sheet.spreadsheetId, sheet.gid) : null;
+  const columnsConfig = playerSheetKey ? store.getColumnsConfiguration(playerSheetKey) : null;
+  const existingDisplayConfig = playerSheetKey ? store.getTeamsDisplayConfiguration(playerSheetKey) : null;
+  
+  // Open display modal if no config exists OR if in reconfigure mode
+  if (columnsConfig && (!existingDisplayConfig || isReconfigureAllMode)) {
+    // Open teams display modal to select which columns to show in team cards
+    // Pass existing config for pre-fill if available
+    events.openTeamsDisplayModal(columnsConfig, existingDisplayConfig);
+    return; // Rendering and polling will happen after display config is confirmed
+  }
+  
+  // Reset reconfigure mode
+  isReconfigureAllMode = false;
+  
   // Render teams if on teams tab
   if (store.getActiveTab() === 'teams') {
     const teamsData = store.getTeamsData();
     if (teamsData) {
-      await renderer.renderTeamsView(teamsData.headers, teamsData.data, layoutConfig);
+      await renderTeamsWithConfig(teamsData.headers, teamsData.data, layoutConfig);
     }
+  }
+  
+  // Start polling if not already running
+  if (!pollingManager?.isRunning()) {
+    startPolling();
   }
 }
 
@@ -378,16 +470,60 @@ function onTeamsLayoutCancelled() {
 }
 
 /**
- * Fetches and renders all data
+ * Called when teams display configuration is confirmed
+ * @param {import('./storage/persistence.js').TeamsDisplayConfig} displayConfig
  */
-async function fetchAndRender() {
-  console.log('[App] fetchAndRender() called');
-  console.trace('[App] fetchAndRender stack:');
+async function onTeamsDisplayConfigConfirmed(displayConfig) {
+  // Reset reconfigure mode - this is the last modal in the chain
+  isReconfigureAllMode = false;
+  
+  const sheet = store.getFirstSheet();
+  if (!sheet) return;
+  
+  const sheetKey = getSheetKey(sheet.spreadsheetId, sheet.gid);
+  
+  // Save the display config
+  store.setTeamsDisplayConfiguration(sheetKey, displayConfig);
+  
+  // Render teams if on teams tab
+  if (store.getActiveTab() === 'teams') {
+    const teamsSheet = store.getTeamsSheet();
+    const teamsData = store.getTeamsData();
+    if (teamsSheet && teamsData) {
+      const teamsSheetKey = getSheetKey(teamsSheet.spreadsheetId, teamsSheet.gid);
+      const layoutConfig = loadTeamsLayoutConfig(teamsSheetKey);
+      await renderTeamsWithConfig(teamsData.headers, teamsData.data, layoutConfig);
+    }
+  }
+  
+  // Start polling if not already running
+  if (!pollingManager?.isRunning()) {
+    startPolling();
+  }
+}
+
+/**
+ * Fetches and renders all data
+ * @param {boolean} [forceShowConfigModal=false] - Force show config modal for players sheet
+ */
+async function fetchAndRender(forceShowConfigModal = false) {
+  if (config.isDev) {
+    console.log('[App] fetchAndRender() called', { forceShowConfigModal });
+  }
+  
+  // When forcing config modal, only fetch players first
+  // Teams will be configured after player config is confirmed
+  if (forceShowConfigModal) {
+    await fetchAndRenderPlayers(false, true);
+    // Teams configuration happens in onColumnConfigConfirmed
+    return;
+  }
+  
+  // Normal flow: fetch both in parallel
   await Promise.all([
     fetchAndRenderPlayers(),
     store.hasTeamsSheet() ? fetchAndRenderTeams() : Promise.resolve()
   ]);
-  console.log('[App] fetchAndRender() completed');
 }
 
 /**
@@ -444,13 +580,16 @@ function startPolling() {
 }
 
 /**
- * Called when sheet is configured
+ * Called when sheet is configured (user clicked "Connect and Configure")
  */
 async function onSheetConfigured() {
   renderer.showLoading();
   renderer.updateTabsVisibility(store.hasTeamsSheet());
-  await fetchAndRender();
-  startPolling();
+  // Set reconfigure mode to show all config modals (pre-filled with existing values)
+  isReconfigureAllMode = true;
+  // Force show config modal since user explicitly clicked "Connect and Configure"
+  // Polling will be started after configuration is complete (in onColumnConfigConfirmed or onTeamsLayoutConfirmed)
+  await fetchAndRender(true);
 }
 
 /**
@@ -462,7 +601,9 @@ async function onTabChange(tab) {
   
   // Show filters only on players tab
   renderer.updateFiltersVisibility(tab === 'players');
-  renderer.updateFilterButtonStates();
+  if (tab === 'players') {
+    updateFilterVisibility();
+  }
   
   if (tab === 'players') {
     const sheet = store.getFirstSheet();
@@ -485,7 +626,7 @@ async function onTabChange(tab) {
       const layoutConfig = teamsSheet 
         ? loadTeamsLayoutConfig(getSheetKey(teamsSheet.spreadsheetId, teamsSheet.gid))
         : null;
-      await renderer.renderTeamsView(teamsData.headers, teamsData.data, layoutConfig);
+      await renderTeamsWithConfig(teamsData.headers, teamsData.data, layoutConfig);
     } else if (store.hasTeamsSheet()) {
       await fetchAndRenderTeams();
     } else {
@@ -541,11 +682,15 @@ function onTeamPlayerSelect(nickname) {
   const cached = sheet ? store.getSheetData(sheet.spreadsheetId, sheet.gid) : null;
   const headers = cached?.headers || [];
   
+  // Get columns configuration for dynamic rendering
+  const sheetKey = sheet ? getSheetKey(sheet.spreadsheetId, sheet.gid) : null;
+  const columnsConfig = sheetKey ? store.getColumnsConfiguration(sheetKey) : null;
+  
   const player = store.getPlayerByNickname(nickname);
   
   if (player) {
     store.setSelectedPlayer(player);
-    renderer.renderTeamsPlayerDetailsPanel(player, headers);
+    renderer.renderTeamsPlayerDetailsPanel(player, headers, columnsConfig);
     renderer.updateTeamsPlayerSelection(nickname);
   } else {
     // Player not found in players sheet, show minimal info with just nickname
@@ -558,7 +703,7 @@ function onTeamPlayerSelect(nickname) {
       rawRow: []
     };
     store.setSelectedPlayer(playerLike);
-    renderer.renderTeamsPlayerDetailsPanel(playerLike, headers);
+    renderer.renderTeamsPlayerDetailsPanel(playerLike, headers, columnsConfig);
     renderer.updateTeamsPlayerSelection(nickname);
   }
 }
@@ -595,7 +740,16 @@ function onPlayerRowSelect(rowIndex) {
     store.setSelectedPlayer(player);
     selectedPlayerRowIndex = rowIndex;
     lastPlayerDetailsHash = computePlayerDetailsHash(player);
-    renderer.renderPlayerDetailsPanel(player, cached.headers);
+    
+    // Use dynamic config if available
+    const sheetKey = getSheetKey(sheet.spreadsheetId, sheet.gid);
+    const columnsConfig = store.getColumnsConfiguration(sheetKey);
+    
+    if (columnsConfig && columnsConfig.columns.length > 0) {
+      renderer.renderPlayerDetailsPanelWithConfig(player, cached.headers, columnsConfig);
+    } else {
+      renderer.renderPlayerDetailsPanel(player, cached.headers);
+    }
     renderer.updatePlayerRowSelection(rowIndex);
   }
 }
@@ -691,7 +845,7 @@ async function onConfigureTeamsLayout() {
 }
 
 /**
- * Called when column mapping is confirmed in the modal
+ * Called when column mapping is confirmed in the modal (legacy)
  * @param {import('./storage/persistence.js').ColumnMapping} mapping
  */
 async function onColumnMappingConfirmed(mapping) {
@@ -724,6 +878,66 @@ async function onColumnMappingConfirmed(mapping) {
   }
   
   renderer.updateStatusBar(new Date(), true);
+  
+  // Start polling if not already running
+  if (!pollingManager?.isRunning()) {
+    startPolling();
+  }
+}
+
+/**
+ * Called when column configuration is confirmed in the modal
+ * @param {import('./storage/persistence.js').ColumnsConfiguration} columnsConfig
+ */
+async function onColumnConfigConfirmed(columnsConfig) {
+  isColumnMappingPending = false;
+  
+  const sheet = store.getFirstSheet();
+  if (!sheet || !pendingSheetData) return;
+  
+  const sheetKey = getSheetKey(sheet.spreadsheetId, sheet.gid);
+  
+  // Save the columns configuration
+  store.setColumnsConfiguration(sheetKey, columnsConfig);
+  
+  // Update sheet data
+  store.updateSheetData({
+    spreadsheetId: sheet.spreadsheetId,
+    gid: sheet.gid,
+    headers: pendingSheetData.headers,
+    data: pendingSheetData.data,
+    lastUpdated: new Date()
+  });
+  
+  pendingSheetData = null;
+  
+  // Render the data
+  if (store.getActiveTab() === 'players') {
+    const teams = getParsedTeams();
+    const cached = store.getSheetData(sheet.spreadsheetId, sheet.gid);
+    if (cached) {
+      renderPlayersPanel(cached.headers, cached.data, teams);
+      renderer.showDataDisplay();
+    }
+  }
+  
+  renderer.updateStatusBar(new Date(), true);
+  
+  // Check if teams sheet is configured and needs layout configuration
+  const teamsSheet = store.getTeamsSheet();
+  if (teamsSheet) {
+    const teamsSheetKey = getSheetKey(teamsSheet.spreadsheetId, teamsSheet.gid);
+    const existingTeamsLayout = loadTeamsLayoutConfig(teamsSheetKey);
+    
+    // Open teams layout modal if no config exists OR if in reconfigure mode
+    if (!existingTeamsLayout || isReconfigureAllMode) {
+      await onConfigureTeamsLayout();
+      return; // Polling will be started after teams layout is confirmed
+    }
+  }
+  
+  // Reset reconfigure mode
+  isReconfigureAllMode = false;
   
   // Start polling if not already running
   if (!pollingManager?.isRunning()) {
@@ -807,6 +1021,8 @@ async function init() {
     onPlayerRowSelect,
     onTeamPlayerSelect,
     onColumnMappingConfirmed,
+    onColumnConfigConfirmed,
+    onTeamsDisplayConfigConfirmed,
     onConfigureTeamsLayout
   });
   
@@ -825,17 +1041,31 @@ async function init() {
         const selectedPlayer = store.getSelectedPlayer();
         const activeTab = store.getActiveTab();
         
-        // Re-render players table
-        renderer.renderPlayersTable(
-          cached.headers, 
-          cached.data,
-          teamsData?.parsedTeams || []
-        );
+        // Re-render players table with dynamic config if available
+        const sheetKey = getSheetKey(sheet.spreadsheetId, sheet.gid);
+        const columnsConfig = store.getColumnsConfiguration(sheetKey);
+        
+        if (columnsConfig && columnsConfig.columns.length > 0) {
+          renderer.renderPlayersTableWithConfig(
+            cached.headers, 
+            cached.data,
+            columnsConfig,
+            teamsData?.parsedTeams || []
+          );
+        } else {
+          renderer.renderPlayersTable(
+            cached.headers, 
+            cached.data,
+            teamsData?.parsedTeams || []
+          );
+        }
         
         // Re-render player details panel based on active tab
         if (selectedPlayer) {
           if (activeTab === 'teams') {
-            renderer.renderTeamsPlayerDetailsPanel(selectedPlayer, cached.headers);
+            renderer.renderTeamsPlayerDetailsPanel(selectedPlayer, cached.headers, columnsConfig);
+          } else if (columnsConfig && columnsConfig.columns.length > 0) {
+            renderer.renderPlayerDetailsPanelWithConfig(selectedPlayer, cached.headers, columnsConfig);
           } else {
             renderer.renderPlayerDetailsPanel(selectedPlayer, cached.headers);
           }
@@ -857,7 +1087,7 @@ async function init() {
   
   // Show filters on players tab by default
   renderer.updateFiltersVisibility(store.getActiveTab() === 'players');
-  renderer.updateFilterButtonStates();
+  updateFilterVisibility();
   
   // Check if sheets are configured
   if (store.hasConfiguredSheets()) {

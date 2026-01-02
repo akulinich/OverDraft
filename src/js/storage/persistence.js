@@ -7,7 +7,9 @@ const STORAGE_KEYS = {
   TEAMS_SHEET: 'overdraft_teams_sheet',
   SETTINGS: 'overdraft_settings',
   COLUMN_MAPPINGS: 'overdraft_column_mappings',
+  COLUMNS_CONFIG: 'overdraft_columns_config',
   TEAMS_LAYOUT: 'overdraft_teams_layout',
+  TEAMS_DISPLAY_CONFIG: 'overdraft_teams_display_config',
   LOCAL_CSV_DATA: 'overdraft_local_csv_data',
   LANGUAGE: 'overdraft_language'
 };
@@ -42,12 +44,55 @@ const CURRENT_VERSION = 1;
  * @property {string|null} role - Column name for player role
  * @property {string|null} rating - Column name for player rating
  * @property {string|null} heroes - Column name for player heroes
+ * @deprecated Use ColumnsConfiguration instead
  */
 
 /**
  * @typedef {Object} StoredColumnMappings
  * @property {number} version
  * @property {Object<string, ColumnMapping>} mappings - Keyed by sheetKey (spreadsheetId_gid)
+ * @deprecated Use StoredColumnsConfig instead
+ */
+
+/**
+ * Column type for rendering
+ * @typedef {'name'|'role'|'rating'|'heroes'|'text'} ColumnType
+ */
+
+/**
+ * Single column configuration
+ * @typedef {Object} ColumnConfig
+ * @property {string} id - Unique identifier (uuid)
+ * @property {string} displayName - User-defined display name
+ * @property {string} sheetColumn - Mapped column name from Google Sheet
+ * @property {ColumnType} columnType - Type of data in this column
+ * @property {number} order - Order in the table (0-based)
+ */
+
+/**
+ * Complete columns configuration for a sheet
+ * @typedef {Object} ColumnsConfiguration
+ * @property {ColumnConfig[]} columns - Ordered array of column configurations
+ */
+
+/**
+ * Stored columns configurations
+ * @typedef {Object} StoredColumnsConfig
+ * @property {number} version
+ * @property {Object<string, ColumnsConfiguration>} configs - Keyed by sheetKey (spreadsheetId_gid)
+ */
+
+/**
+ * Teams display column configuration
+ * @typedef {Object} TeamsDisplayConfig
+ * @property {string[]} visibleColumnIds - IDs of columns to show in team player rows
+ */
+
+/**
+ * Stored teams display configurations
+ * @typedef {Object} StoredTeamsDisplayConfig
+ * @property {number} version
+ * @property {Object<string, TeamsDisplayConfig>} configs - Keyed by sheetKey (spreadsheetId_gid)
  */
 
 /**
@@ -223,11 +268,258 @@ export function saveColumnMapping(sheetKey, mapping) {
 /**
  * Removes column mapping for a specific sheet
  * @param {string} sheetKey - Key in format spreadsheetId_gid
+ * @deprecated Use removeColumnsConfiguration instead
  */
 export function removeColumnMapping(sheetKey) {
   const stored = safeLoad(STORAGE_KEYS.COLUMN_MAPPINGS, getDefaultColumnMappings);
   delete stored.mappings[sheetKey];
   safeSave(STORAGE_KEYS.COLUMN_MAPPINGS, stored);
+}
+
+// ============================================================================
+// Dynamic Columns Configuration (new system)
+// ============================================================================
+
+/**
+ * Generates a unique ID for column configuration
+ * @returns {string}
+ */
+export function generateColumnId() {
+  return `col_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Gets default columns config storage
+ * @returns {StoredColumnsConfig}
+ */
+function getDefaultColumnsConfig() {
+  return {
+    version: CURRENT_VERSION,
+    configs: {}
+  };
+}
+
+/**
+ * Creates default columns configuration with only the name column
+ * @param {string} [nameColumnHeader] - Optional header name for name column
+ * @returns {ColumnsConfiguration}
+ */
+export function createDefaultColumnsConfiguration(nameColumnHeader = null) {
+  // Always include the mandatory name column
+  return {
+    columns: [{
+      id: generateColumnId(),
+      displayName: 'Имя',
+      sheetColumn: nameColumnHeader || '', // Empty if not provided, user must select
+      columnType: 'name',
+      order: 0
+    }]
+  };
+}
+
+/**
+ * Migrates legacy ColumnMapping to new ColumnsConfiguration format
+ * @param {ColumnMapping} legacyMapping - Legacy column mapping
+ * @returns {ColumnsConfiguration}
+ */
+export function migrateColumnMappingToConfig(legacyMapping) {
+  const columns = [];
+  let order = 0;
+  
+  // Name column is always first
+  if (legacyMapping.nickname) {
+    columns.push({
+      id: generateColumnId(),
+      displayName: 'Имя',
+      sheetColumn: legacyMapping.nickname,
+      columnType: 'name',
+      order: order++
+    });
+  }
+  
+  // Role column
+  if (legacyMapping.role) {
+    columns.push({
+      id: generateColumnId(),
+      displayName: 'Роль',
+      sheetColumn: legacyMapping.role,
+      columnType: 'role',
+      order: order++
+    });
+  }
+  
+  // Rating column
+  if (legacyMapping.rating) {
+    columns.push({
+      id: generateColumnId(),
+      displayName: 'Рейтинг',
+      sheetColumn: legacyMapping.rating,
+      columnType: 'rating',
+      order: order++
+    });
+  }
+  
+  // Heroes column
+  if (legacyMapping.heroes) {
+    columns.push({
+      id: generateColumnId(),
+      displayName: 'Герои',
+      sheetColumn: legacyMapping.heroes,
+      columnType: 'heroes',
+      order: order++
+    });
+  }
+  
+  return { columns };
+}
+
+/**
+ * Loads columns configuration for a specific sheet
+ * Migrates from legacy format if needed
+ * @param {string} sheetKey - Key in format spreadsheetId_gid
+ * @returns {ColumnsConfiguration|null}
+ */
+export function loadColumnsConfiguration(sheetKey) {
+  // First try to load new format
+  const stored = safeLoad(STORAGE_KEYS.COLUMNS_CONFIG, getDefaultColumnsConfig);
+  if (stored.configs?.[sheetKey]) {
+    return stored.configs[sheetKey];
+  }
+  
+  // Try to migrate from legacy format
+  const legacyMapping = loadColumnMapping(sheetKey);
+  if (legacyMapping && (legacyMapping.nickname || legacyMapping.role || legacyMapping.rating || legacyMapping.heroes)) {
+    const migrated = migrateColumnMappingToConfig(legacyMapping);
+    // Save migrated config
+    saveColumnsConfiguration(sheetKey, migrated);
+    return migrated;
+  }
+  
+  return null;
+}
+
+/**
+ * Saves columns configuration for a specific sheet
+ * @param {string} sheetKey - Key in format spreadsheetId_gid
+ * @param {ColumnsConfiguration} config
+ */
+export function saveColumnsConfiguration(sheetKey, config) {
+  const stored = safeLoad(STORAGE_KEYS.COLUMNS_CONFIG, getDefaultColumnsConfig);
+  stored.configs[sheetKey] = config;
+  stored.version = CURRENT_VERSION;
+  safeSave(STORAGE_KEYS.COLUMNS_CONFIG, stored);
+}
+
+/**
+ * Removes columns configuration for a specific sheet
+ * @param {string} sheetKey - Key in format spreadsheetId_gid
+ */
+export function removeColumnsConfiguration(sheetKey) {
+  const stored = safeLoad(STORAGE_KEYS.COLUMNS_CONFIG, getDefaultColumnsConfig);
+  delete stored.configs[sheetKey];
+  safeSave(STORAGE_KEYS.COLUMNS_CONFIG, stored);
+}
+
+/**
+ * Validates a columns configuration
+ * @param {ColumnsConfiguration} config
+ * @returns {{valid: boolean, error?: string}}
+ */
+export function validateColumnsConfiguration(config) {
+  if (!config || !Array.isArray(config.columns)) {
+    return { valid: false, error: 'Invalid configuration structure' };
+  }
+  
+  // Must have at least the name column
+  const nameColumn = config.columns.find(c => c.columnType === 'name');
+  if (!nameColumn) {
+    return { valid: false, error: 'Name column is required' };
+  }
+  
+  // Check for duplicate column IDs
+  const ids = new Set();
+  for (const col of config.columns) {
+    if (ids.has(col.id)) {
+      return { valid: false, error: `Duplicate column ID: ${col.id}` };
+    }
+    ids.add(col.id);
+  }
+  
+  // Check all columns have required fields
+  for (const col of config.columns) {
+    if (!col.id || !col.displayName || !col.sheetColumn || !col.columnType) {
+      return { valid: false, error: 'Column missing required fields' };
+    }
+  }
+  
+  return { valid: true };
+}
+
+/**
+ * Gets a column by type from configuration
+ * @param {ColumnsConfiguration} config
+ * @param {ColumnType} columnType
+ * @returns {ColumnConfig|null}
+ */
+export function getColumnByType(config, columnType) {
+  return config?.columns?.find(c => c.columnType === columnType) || null;
+}
+
+/**
+ * Gets ordered columns (sorted by order field)
+ * @param {ColumnsConfiguration} config
+ * @returns {ColumnConfig[]}
+ */
+export function getOrderedColumns(config) {
+  if (!config?.columns) return [];
+  return [...config.columns].sort((a, b) => a.order - b.order);
+}
+
+// ============================================================================
+// Teams Display Configuration
+// ============================================================================
+
+/**
+ * Gets default teams display config storage
+ * @returns {StoredTeamsDisplayConfig}
+ */
+function getDefaultTeamsDisplayConfig() {
+  return {
+    version: CURRENT_VERSION,
+    configs: {}
+  };
+}
+
+/**
+ * Loads teams display configuration for a specific sheet
+ * @param {string} sheetKey - Key in format spreadsheetId_gid
+ * @returns {TeamsDisplayConfig|null}
+ */
+export function loadTeamsDisplayConfig(sheetKey) {
+  const stored = safeLoad(STORAGE_KEYS.TEAMS_DISPLAY_CONFIG, getDefaultTeamsDisplayConfig);
+  return stored.configs?.[sheetKey] || null;
+}
+
+/**
+ * Saves teams display configuration for a specific sheet
+ * @param {string} sheetKey - Key in format spreadsheetId_gid
+ * @param {TeamsDisplayConfig} config
+ */
+export function saveTeamsDisplayConfig(sheetKey, config) {
+  const stored = safeLoad(STORAGE_KEYS.TEAMS_DISPLAY_CONFIG, getDefaultTeamsDisplayConfig);
+  stored.configs[sheetKey] = config;
+  stored.version = CURRENT_VERSION;
+  safeSave(STORAGE_KEYS.TEAMS_DISPLAY_CONFIG, stored);
+}
+
+/**
+ * Removes teams display configuration for a specific sheet
+ * @param {string} sheetKey - Key in format spreadsheetId_gid
+ */
+export function removeTeamsDisplayConfig(sheetKey) {
+  const stored = safeLoad(STORAGE_KEYS.TEAMS_DISPLAY_CONFIG, getDefaultTeamsDisplayConfig);
+  delete stored.configs[sheetKey];
+  safeSave(STORAGE_KEYS.TEAMS_DISPLAY_CONFIG, stored);
 }
 
 /**
@@ -375,7 +667,9 @@ export function clearAll() {
   localStorage.removeItem(STORAGE_KEYS.TEAMS_SHEET);
   localStorage.removeItem(STORAGE_KEYS.SETTINGS);
   localStorage.removeItem(STORAGE_KEYS.COLUMN_MAPPINGS);
+  localStorage.removeItem(STORAGE_KEYS.COLUMNS_CONFIG);
   localStorage.removeItem(STORAGE_KEYS.TEAMS_LAYOUT);
+  localStorage.removeItem(STORAGE_KEYS.TEAMS_DISPLAY_CONFIG);
   localStorage.removeItem(STORAGE_KEYS.LOCAL_CSV_DATA);
   localStorage.removeItem(STORAGE_KEYS.LANGUAGE);
 }

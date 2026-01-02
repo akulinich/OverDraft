@@ -4,8 +4,9 @@
 
 import { createElement, escapeHtml, getRoleClass, getRatingClass, formatRelativeTime, createRoleIcon, createHeroIconsContainer, createRankBadge } from './components.js';
 import { validateTeamsData, formatValidationErrors, getSchemaDocumentation } from '../validation/schema.js';
-import { isLoaded as isOverfastLoaded } from '../api/overfast.js';
+import { isLoaded as isOverfastLoaded, parseHeroesString } from '../api/overfast.js';
 import * as store from '../state/store.js';
+import { getOrderedColumns } from '../storage/persistence.js';
 import { t } from '../i18n/index.js';
 
 /**
@@ -362,10 +363,11 @@ function findMandatoryColumnIndices(headers) {
 }
 
 /**
- * Renders players table with only mandatory columns
+ * Renders players table with only mandatory columns (legacy)
  * @param {string[]} headers 
  * @param {string[][]} data 
  * @param {import('../validation/schema.js').Team[]} [teams] - Optional teams for filtering
+ * @deprecated Use renderPlayersTableWithConfig instead
  */
 export function renderPlayersTable(headers, data, teams = []) {
   const mandatoryCols = findMandatoryColumnIndices(headers);
@@ -414,6 +416,121 @@ export function renderPlayersTable(headers, data, teams = []) {
 }
 
 /**
+ * Renders players table using dynamic columns configuration
+ * @param {string[]} headers 
+ * @param {string[][]} data 
+ * @param {import('../storage/persistence.js').ColumnsConfiguration} config - Dynamic columns configuration
+ * @param {import('../validation/schema.js').Team[]} [teams] - Optional teams for filtering
+ */
+export function renderPlayersTableWithConfig(headers, data, config, teams = []) {
+  const orderedColumns = getOrderedColumns(config);
+  
+  // Build column info with indices
+  const columnInfo = orderedColumns.map(col => ({
+    config: col,
+    index: headers.indexOf(col.sheetColumn),
+    header: col.displayName,
+    key: col.columnType
+  })).filter(col => col.index !== -1);
+  
+  // Render header
+  const thead = document.getElementById('table-header');
+  if (thead) {
+    thead.innerHTML = '';
+    const tr = createElement('tr');
+    
+    for (const col of columnInfo) {
+      const th = createElement('th', { className: `col-${col.key}` }, escapeHtml(col.header));
+      tr.appendChild(th);
+    }
+    
+    thead.appendChild(tr);
+  }
+  
+  // Render body
+  const tbody = document.getElementById('table-body');
+  if (!tbody) return;
+  
+  // Apply filters
+  const filteredData = applyFiltersToTableData(data, headers, teams);
+  
+  const fragment = document.createDocumentFragment();
+  
+  filteredData.forEach((row, rowIndex) => {
+    const tr = createElement('tr', { 
+      className: 'player-table-row',
+      dataset: { rowIndex: String(rowIndex) }
+    });
+    
+    for (const col of columnInfo) {
+      const value = row[col.index] || '';
+      const td = renderCellByType(value, col.key);
+      tr.appendChild(td);
+    }
+    
+    fragment.appendChild(tr);
+  });
+  
+  tbody.innerHTML = '';
+  tbody.appendChild(fragment);
+}
+
+/**
+ * Renders a cell based on column type
+ * @param {string} value
+ * @param {import('../storage/persistence.js').ColumnType} columnType
+ * @returns {HTMLElement}
+ */
+function renderCellByType(value, columnType) {
+  const td = createElement('td');
+  td.classList.add(`col-${columnType}`);
+  
+  switch (columnType) {
+    case 'name':
+      td.classList.add('cell-nickname');
+      td.textContent = value;
+      break;
+      
+    case 'role': {
+      td.classList.add('cell-role');
+      const normalizedRole = normalizeRoleValue(value);
+      if (normalizedRole && isOverfastLoaded()) {
+        const icon = createRoleIcon(normalizedRole, { size: 'sm' });
+        td.appendChild(icon);
+      } else {
+        const roleClass = getRoleClass(value);
+        if (roleClass) td.classList.add(roleClass);
+        td.textContent = value;
+      }
+      break;
+    }
+    
+    case 'rating': {
+      td.classList.add('cell-rating');
+      const rankBadge = createRankBadge(value, { showNumber: true, size: 'sm' });
+      td.appendChild(rankBadge);
+      break;
+    }
+    
+    case 'heroes': {
+      td.classList.add('cell-heroes');
+      if (value) {
+        const heroIcons = createHeroIconsContainer(value, { size: 'md', maxIcons: 5 });
+        td.appendChild(heroIcons);
+      }
+      break;
+    }
+    
+    case 'text':
+    default:
+      td.textContent = value;
+      break;
+  }
+  
+  return td;
+}
+
+/**
  * Gets the first player from filtered data
  * @param {string[]} headers
  * @param {string[][]} data
@@ -436,12 +553,14 @@ export function getFirstFilteredPlayer(headers, data, teams) {
 }
 
 /**
- * Renders full player details in the right panel
+ * Renders full player details in the right panel (legacy version)
  * @param {import('../state/store.js').Player} player
  * @param {string[]} headers - All headers from the sheet
+ * @param {string} [containerId='player-details-content'] - Container element ID
+ * @deprecated Use renderPlayerDetailsPanelWithConfig instead
  */
-export function renderPlayerDetailsPanel(player, headers) {
-  const container = document.getElementById('player-details-content');
+export function renderPlayerDetailsPanel(player, headers, containerId = 'player-details-content') {
+  const container = document.getElementById(containerId);
   if (!container) return;
   
   container.innerHTML = '';
@@ -509,6 +628,144 @@ export function renderPlayerDetailsPanel(player, headers) {
     
     additionalSection.appendChild(fieldsList);
     card.appendChild(additionalSection);
+  }
+  
+  container.appendChild(card);
+}
+
+/**
+ * Renders full player details in the right panel using dynamic config
+ * @param {import('../state/store.js').Player} player
+ * @param {string[]} headers - All headers from the sheet
+ * @param {import('../storage/persistence.js').ColumnsConfiguration} config - Dynamic columns configuration
+ * @param {string} [containerId='player-details-content'] - Container element ID
+ */
+export function renderPlayerDetailsPanelWithConfig(player, headers, config, containerId = 'player-details-content') {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  container.innerHTML = '';
+  container.classList.add('has-player');
+  
+  const card = createElement('div', { className: 'player-info-card' });
+  
+  // Get ordered key columns
+  const orderedColumns = getOrderedColumns(config);
+  const keyColumnHeaders = new Set(orderedColumns.map(c => c.sheetColumn));
+  
+  // Find role column for header icon
+  const roleColumn = orderedColumns.find(c => c.columnType === 'role');
+  
+  // Header with role icon (if configured) and name
+  const header = createElement('div', { className: 'player-info-header' });
+  
+  if (roleColumn && player.role) {
+    const roleWrapper = createElement('span', { className: `player-role-badge ${player.role}` });
+    const roleIcon = createRoleIcon(player.role, { size: 'lg' });
+    roleWrapper.appendChild(roleIcon);
+    header.appendChild(roleWrapper);
+  }
+  
+  header.appendChild(createElement('h4', { className: 'player-info-name' }, player.nickname));
+  card.appendChild(header);
+  
+  // Key columns section - render ALL key columns in configured order (except name which is in header)
+  const keyColumnsSection = createElement('div', { className: 'player-info-key-columns' });
+  let hasKeyColumns = false;
+  
+  for (const col of orderedColumns) {
+    // Skip name column (already in header)
+    if (col.columnType === 'name') continue;
+    
+    // Skip columns without sheet mapping
+    if (!col.sheetColumn) continue;
+    
+    const colIndex = headers.indexOf(col.sheetColumn);
+    if (colIndex === -1 || !player.rawRow) continue;
+    
+    const value = player.rawRow[colIndex];
+    if (value === undefined || value === null || value === '') continue;
+    
+    // Render based on column type
+    switch (col.columnType) {
+      case 'rating': {
+        const ratingStat = createElement('div', { className: 'player-info-stat' });
+        ratingStat.appendChild(createElement('span', { className: 'stat-label' }, col.displayName));
+        const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'md' });
+        rankBadge.classList.add('stat-value');
+        ratingStat.appendChild(rankBadge);
+        keyColumnsSection.appendChild(ratingStat);
+        hasKeyColumns = true;
+        break;
+      }
+      case 'role': {
+        const roleStat = createElement('div', { className: 'player-info-stat' });
+        roleStat.appendChild(createElement('span', { className: 'stat-label' }, col.displayName));
+        const roleValue = createElement('span', { className: 'stat-value stat-role' });
+        roleValue.appendChild(createRoleIcon(player.role, { size: 'sm' }));
+        roleValue.appendChild(document.createTextNode(' ' + getRoleDisplayName(player.role)));
+        roleStat.appendChild(roleValue);
+        keyColumnsSection.appendChild(roleStat);
+        hasKeyColumns = true;
+        break;
+      }
+      case 'heroes': {
+        const heroesSection = createElement('div', { className: 'player-info-heroes' });
+        heroesSection.appendChild(createElement('span', { className: 'stat-label' }, col.displayName));
+        const heroList = parseHeroesString(value);
+        const heroIcons = createHeroIconsContainer(heroList, { size: 'md', maxIcons: 10 });
+        heroIcons.classList.add('heroes-list');
+        heroesSection.appendChild(heroIcons);
+        keyColumnsSection.appendChild(heroesSection);
+        hasKeyColumns = true;
+        break;
+      }
+      case 'text':
+      default: {
+        const stat = createElement('div', { className: 'player-info-stat' });
+        stat.appendChild(createElement('span', { className: 'stat-label' }, col.displayName));
+        stat.appendChild(createElement('span', { className: 'stat-value' }, String(value)));
+        keyColumnsSection.appendChild(stat);
+        hasKeyColumns = true;
+        break;
+      }
+    }
+  }
+  
+  if (hasKeyColumns) {
+    card.appendChild(keyColumnsSection);
+  }
+  
+  // Additional fields from rawRow (columns NOT in key columns)
+  if (player.rawRow && player.rawRow.length > 0 && headers.length > 0) {
+    const additionalFields = [];
+    
+    for (let i = 0; i < headers.length; i++) {
+      // Skip key columns
+      if (keyColumnHeaders.has(headers[i])) continue;
+      
+      const value = player.rawRow[i];
+      if (value === undefined || value === null || value === '') continue;
+      
+      additionalFields.push({ header: headers[i], value: String(value) });
+    }
+    
+    if (additionalFields.length > 0) {
+      const additionalSection = createElement('div', { className: 'player-info-additional' });
+      additionalSection.appendChild(createElement('span', { className: 'section-label' }, t('players.otherData')));
+      
+      const fieldsList = createElement('div', { className: 'player-info-fields' });
+      
+      for (const field of additionalFields) {
+        const fieldRow = createElement('div', { className: 'player-info-field' });
+        fieldRow.appendChild(createElement('span', { className: 'field-label' }, field.header));
+        fieldRow.appendChild(createElement('span', { className: 'field-value' }, field.value));
+        fieldsList.appendChild(fieldRow);
+      }
+      
+      additionalSection.appendChild(fieldsList);
+      card.appendChild(additionalSection);
+    }
   }
   
   container.appendChild(card);
@@ -732,13 +989,35 @@ export function updateTabsVisibility(showTabs) {
 }
 
 /**
- * Updates filters visibility
- * @param {boolean} showFilters 
+ * Updates filters visibility based on tab
+ * @param {boolean} showFilters - Whether we're on players tab
  */
 export function updateFiltersVisibility(showFilters) {
-  const filters = document.getElementById('player-filters');
-  if (filters) {
-    filters.hidden = !showFilters;
+  const container = document.getElementById('player-filters');
+  if (container) {
+    container.style.display = showFilters ? 'flex' : 'none';
+  }
+}
+
+/**
+ * Updates available filter visibility (shown only when teams sheet is connected)
+ * @param {boolean} hasTeamsSheet
+ */
+export function updateAvailableFilterVisibility(hasTeamsSheet) {
+  const filterAvailable = document.getElementById('filter-available');
+  if (filterAvailable) {
+    filterAvailable.hidden = !hasTeamsSheet;
+  }
+}
+
+/**
+ * Updates role filters visibility (shown only when at least one role column is configured)
+ * @param {boolean} hasRoleColumns
+ */
+export function updateRoleFiltersVisibility(hasRoleColumns) {
+  const filterRoles = document.getElementById('filter-roles');
+  if (filterRoles) {
+    filterRoles.hidden = !hasRoleColumns;
   }
 }
 
@@ -832,6 +1111,68 @@ export async function renderTeamsView(headers, data, layoutConfig) {
 }
 
 /**
+ * Renders teams view with dynamic column configuration
+ * @param {string[]} headers - Teams sheet headers
+ * @param {string[][]} data - Teams sheet data
+ * @param {import('../storage/persistence.js').TeamsLayoutConfig} [layoutConfig] - Optional layout config
+ * @param {string[]} playerHeaders - Players sheet headers
+ * @param {import('../storage/persistence.js').ColumnsConfiguration} [columnsConfig] - Optional columns config
+ * @param {import('../storage/persistence.js').TeamsDisplayConfig} [displayConfig] - Optional display config
+ */
+export async function renderTeamsViewWithConfig(headers, data, layoutConfig, playerHeaders, columnsConfig, displayConfig) {
+  const container = document.getElementById('teams-container');
+  const errorBox = document.getElementById('teams-validation-error');
+  const errorMessage = document.getElementById('teams-error-message');
+  const schemaDocs = document.getElementById('schema-docs');
+  
+  if (!container) return;
+  
+  // Validate data against schema with provided config
+  const validationResult = validateTeamsData(headers, data, layoutConfig);
+  
+  if (!validationResult.valid) {
+    // Show validation error
+    if (errorBox) errorBox.hidden = false;
+    if (errorMessage) {
+      errorMessage.textContent = formatValidationErrors(validationResult.errors);
+    }
+    if (schemaDocs) {
+      schemaDocs.textContent = getSchemaDocumentation();
+    }
+    container.innerHTML = '';
+    return;
+  }
+  
+  // Hide error, show teams
+  if (errorBox) errorBox.hidden = true;
+  
+  const teamsData = validationResult.data;
+  if (!teamsData || !teamsData.teams) {
+    container.innerHTML = `<p class="teams-not-configured">${t('teams.noData')}</p>`;
+    return;
+  }
+  
+  // Render teams grid
+  container.innerHTML = '';
+  
+  // Import getPlayerByNickname dynamically to avoid circular dependency
+  const { getPlayerByNickname } = await import('../state/store.js');
+  
+  // Use dynamic config if provided, otherwise fallback to legacy
+  if (columnsConfig && columnsConfig.columns && columnsConfig.columns.length > 0) {
+    teamsData.teams.forEach(team => {
+      const card = createTeamCardWithConfig(team, getPlayerByNickname, playerHeaders, columnsConfig, displayConfig);
+      container.appendChild(card);
+    });
+  } else {
+    teamsData.teams.forEach(team => {
+      const card = createTeamCard(team, getPlayerByNickname);
+      container.appendChild(card);
+    });
+  }
+}
+
+/**
  * Creates a team card element
  * @param {import('../validation/schema.js').Team} team 
  * @param {function(string): import('../state/store.js').Player|null} getPlayerFn - Function to get player by nickname
@@ -910,6 +1251,130 @@ function createTeamCard(team, getPlayerFn) {
 }
 
 /**
+ * Creates a team card with dynamic columns configuration
+ * @param {import('../validation/schema.js').Team} team
+ * @param {function(string): import('../state/store.js').Player|null} getPlayerFn
+ * @param {string[]} headers - All sheet headers
+ * @param {import('../storage/persistence.js').ColumnsConfiguration} columnsConfig
+ * @param {import('../storage/persistence.js').TeamsDisplayConfig|null} displayConfig
+ * @returns {HTMLElement}
+ */
+function createTeamCardWithConfig(team, getPlayerFn, headers, columnsConfig, displayConfig) {
+  const card = createElement('div', { className: 'team-card' });
+  
+  // Header
+  const header = createElement('div', { className: 'team-card-header' });
+  const name = createElement('span', { className: 'team-name' }, team.name);
+  header.appendChild(name);
+  
+  // Calculate avg rating from players
+  const teamPlayers = team.playerNicknames
+    .map(nick => getPlayerFn(nick))
+    .filter(p => p !== null);
+  
+  if (teamPlayers.length > 0) {
+    const avgRating = Math.round(
+      teamPlayers.reduce((sum, p) => sum + (p.rating || 0), 0) / teamPlayers.length
+    );
+    if (avgRating > 0) {
+      const rankBadge = createRankBadge(avgRating, { showNumber: true, size: 'sm' });
+      rankBadge.classList.add('team-rating');
+      header.appendChild(rankBadge);
+    }
+  }
+  
+  card.appendChild(header);
+  
+  // Get visible columns from config
+  const orderedColumns = getOrderedColumns(columnsConfig);
+  const visibleIds = new Set(displayConfig?.visibleColumnIds || orderedColumns.map(c => c.id));
+  
+  // Filter to visible columns (name is always visible)
+  const visibleColumns = orderedColumns.filter(c => 
+    c.columnType === 'name' || visibleIds.has(c.id)
+  );
+  
+  // Build column info with indices
+  const columnInfo = visibleColumns.map(col => ({
+    config: col,
+    index: headers.indexOf(col.sheetColumn),
+    key: col.columnType
+  })).filter(col => col.index !== -1 || col.key === 'name');
+  
+  // Players
+  const playersContainer = createElement('div', { className: 'team-players' });
+  
+  team.playerNicknames.forEach(nickname => {
+    const player = getPlayerFn(nickname);
+    
+    const playerRow = createElement('div', { 
+      className: 'team-player',
+      dataset: { nickname }
+    });
+    
+    if (player) {
+      // Render each visible column
+      for (const col of columnInfo) {
+        switch (col.key) {
+          case 'name': {
+            const nickEl = createElement('span', { className: 'player-nickname' }, player.nickname);
+            playerRow.appendChild(nickEl);
+            break;
+          }
+          
+          case 'role': {
+            const roleIcon = createRoleIcon(player.role, { size: 'sm' });
+            const roleWrapper = createElement('span', { className: `player-role ${player.role}` });
+            roleWrapper.appendChild(roleIcon);
+            playerRow.appendChild(roleWrapper);
+            break;
+          }
+          
+          case 'rating': {
+            const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'sm' });
+            rankBadge.classList.add('player-rating');
+            playerRow.appendChild(rankBadge);
+            break;
+          }
+          
+          case 'heroes': {
+            if (player.heroes) {
+              const heroIcons = createHeroIconsContainer(player.heroes, { size: 'sm', maxIcons: 3 });
+              heroIcons.classList.add('player-heroes');
+              playerRow.appendChild(heroIcons);
+            }
+            break;
+          }
+          
+          case 'text': {
+            const value = player.rawRow?.[col.index] || '';
+            const textEl = createElement('span', { className: 'player-text' }, value);
+            playerRow.appendChild(textEl);
+            break;
+          }
+        }
+      }
+    } else {
+      // Player not found in players table - show only name
+      const unknownIcon = createElement('span', { className: 'player-role unknown' }, '?');
+      playerRow.appendChild(unknownIcon);
+      
+      const nickEl = createElement('span', { className: 'player-nickname player-unknown' }, nickname);
+      playerRow.appendChild(nickEl);
+      
+      const unknownRating = createElement('span', { className: 'player-rating unknown' }, '—');
+      playerRow.appendChild(unknownRating);
+    }
+    
+    playersContainer.appendChild(playerRow);
+  });
+  
+  card.appendChild(playersContainer);
+  
+  return card;
+}
+
+/**
  * Gets short role label for badge
  * @param {string} role 
  * @returns {string}
@@ -954,81 +1419,19 @@ export function showTeamsNotConfigured() {
 
 /**
  * Renders player details in the teams tab right panel
+ * Uses the same dynamic columns configuration as the players tab
  * @param {import('../state/store.js').Player} player
  * @param {string[]} headers - All headers from the players sheet
+ * @param {import('../storage/persistence.js').ColumnsConfiguration} [config] - Dynamic columns configuration
  */
-export function renderTeamsPlayerDetailsPanel(player, headers) {
-  const container = document.getElementById('teams-player-details-content');
-  if (!container) return;
-  
-  container.innerHTML = '';
-  container.classList.add('has-player');
-  
-  const card = createElement('div', { className: 'player-info-card' });
-  
-  // Header with role icon and name
-  const header = createElement('div', { className: 'player-info-header' });
-  const roleWrapper = createElement('span', { className: `player-role-badge ${player.role}` });
-  const roleIcon = createRoleIcon(player.role, { size: 'lg' });
-  roleWrapper.appendChild(roleIcon);
-  header.appendChild(roleWrapper);
-  header.appendChild(createElement('h4', { className: 'player-info-name' }, player.nickname));
-  card.appendChild(header);
-  
-  // Main stats (rating and role)
-  const mainStats = createElement('div', { className: 'player-info-main-stats' });
-  
-  // Rating stat with rank badge
-  const ratingStat = createElement('div', { className: 'player-info-stat' });
-  ratingStat.appendChild(createElement('span', { className: 'stat-label' }, t('players.rating')));
-  const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'md' });
-  rankBadge.classList.add('stat-value');
-  ratingStat.appendChild(rankBadge);
-  mainStats.appendChild(ratingStat);
-  
-  // Role stat
-  const roleStat = createElement('div', { className: 'player-info-stat' });
-  roleStat.appendChild(createElement('span', { className: 'stat-label' }, t('players.role')));
-  const roleValue = createElement('span', { className: 'stat-value stat-role' });
-  roleValue.appendChild(createRoleIcon(player.role, { size: 'sm' }));
-  roleValue.appendChild(document.createTextNode(' ' + getRoleDisplayName(player.role)));
-  roleStat.appendChild(roleValue);
-  mainStats.appendChild(roleStat);
-  
-  card.appendChild(mainStats);
-  
-  // Heroes section with icons
-  if (player.heroes) {
-    const heroesSection = createElement('div', { className: 'player-info-heroes' });
-    heroesSection.appendChild(createElement('span', { className: 'stat-label' }, t('players.heroes')));
-    const heroIcons = createHeroIconsContainer(player.heroes, { size: 'md', maxIcons: 10 });
-    heroIcons.classList.add('heroes-list');
-    heroesSection.appendChild(heroIcons);
-    card.appendChild(heroesSection);
+export function renderTeamsPlayerDetailsPanel(player, headers, config) {
+  if (config && config.columns && config.columns.length > 0) {
+    // Use dynamic config with teams container
+    renderPlayerDetailsPanelWithConfig(player, headers, config, 'teams-player-details-content');
+  } else {
+    // Fallback to legacy rendering
+    renderPlayerDetailsPanel(player, headers, 'teams-player-details-content');
   }
-  
-  // Additional fields from rawRow (all original columns)
-  if (player.rawRow && player.rawRow.length > 0 && headers.length > 0) {
-    const additionalSection = createElement('div', { className: 'player-info-additional' });
-    additionalSection.appendChild(createElement('span', { className: 'section-label' }, t('players.allData')));
-    
-    const fieldsList = createElement('div', { className: 'player-info-fields' });
-    
-    for (let i = 0; i < headers.length; i++) {
-      const value = player.rawRow[i];
-      if (value === undefined || value === null || value === '') continue;
-      
-      const fieldRow = createElement('div', { className: 'player-info-field' });
-      fieldRow.appendChild(createElement('span', { className: 'field-label' }, headers[i]));
-      fieldRow.appendChild(createElement('span', { className: 'field-value' }, String(value)));
-      fieldsList.appendChild(fieldRow);
-    }
-    
-    additionalSection.appendChild(fieldsList);
-    card.appendChild(additionalSection);
-  }
-  
-  container.appendChild(card);
 }
 
 /**
@@ -1287,12 +1690,473 @@ export function showColumnMappingModal() {
 
 /**
  * Hides the column mapping modal
+ * @deprecated Use hideColumnConfigModal instead
  */
 export function hideColumnMappingModal() {
   const modal = document.getElementById('column-mapping-modal');
   if (modal) {
     modal.hidden = true;
   }
+}
+
+
+/* ============================================================================
+   Column Configuration Modal (new dynamic system)
+   ============================================================================ */
+
+/**
+ * @typedef {import('../storage/persistence.js').ColumnConfig} ColumnConfig
+ * @typedef {import('../storage/persistence.js').ColumnsConfiguration} ColumnsConfiguration
+ * @typedef {import('../storage/persistence.js').ColumnType} ColumnType
+ */
+
+/** Column type labels for display */
+const COLUMN_TYPE_LABELS = {
+  name: 'Имя',
+  role: 'Роль',
+  rating: 'Рейтинг',
+  heroes: 'Герои',
+  text: 'Текст'
+};
+
+/** Available column types for selection (excluding name which is locked) */
+const SELECTABLE_COLUMN_TYPES = ['role', 'rating', 'heroes', 'text'];
+
+/** @type {string[]} Cached sheet headers for column config modal */
+let cachedConfigHeaders = [];
+
+/** @type {ColumnsConfiguration|null} Current configuration being edited */
+let editingColumnsConfig = null;
+
+/**
+ * Renders a single column configuration row
+ * @param {ColumnConfig} column
+ * @param {string[]} sheetHeaders
+ * @param {number} index
+ * @param {number} totalColumns
+ * @returns {HTMLElement}
+ */
+function renderColumnConfigRow(column, sheetHeaders, index, totalColumns) {
+  const isNameColumn = column.columnType === 'name';
+  
+  const row = createElement('div', { 
+    className: `column-config-row ${isNameColumn ? 'is-name' : ''}`,
+    dataset: { columnId: column.id },
+    draggable: !isNameColumn // Name column cannot be reordered
+  });
+  
+  // Drag handle
+  const dragHandle = createElement('div', { className: 'column-config-drag-handle' });
+  dragHandle.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <line x1="8" y1="6" x2="16" y2="6"/>
+    <line x1="8" y1="12" x2="16" y2="12"/>
+    <line x1="8" y1="18" x2="16" y2="18"/>
+  </svg>`;
+  row.appendChild(dragHandle);
+  
+  // Display name input
+  const nameInput = createElement('input', {
+    className: 'column-config-input',
+    type: 'text',
+    value: column.displayName,
+    dataset: { field: 'displayName', columnId: column.id }
+  });
+  if (isNameColumn) {
+    nameInput.disabled = true;
+  }
+  row.appendChild(nameInput);
+  
+  // Sheet column select
+  const sheetSelect = createElement('select', {
+    className: 'column-config-select',
+    dataset: { field: 'sheetColumn', columnId: column.id }
+  });
+  
+  const emptyOption = createElement('option', { value: '' }, '-- выбрать столбец --');
+  sheetSelect.appendChild(emptyOption);
+  
+  for (const header of sheetHeaders) {
+    const option = createElement('option', { value: header }, header);
+    if (column.sheetColumn === header) {
+      option.selected = true;
+    }
+    sheetSelect.appendChild(option);
+  }
+  row.appendChild(sheetSelect);
+  
+  // Column type select
+  const typeSelect = createElement('select', {
+    className: 'column-config-select',
+    dataset: { field: 'columnType', columnId: column.id }
+  });
+  
+  if (isNameColumn) {
+    // Only show 'name' type for name column
+    const nameOption = createElement('option', { value: 'name', selected: true }, COLUMN_TYPE_LABELS.name);
+    typeSelect.appendChild(nameOption);
+    typeSelect.disabled = true;
+  } else {
+    for (const type of SELECTABLE_COLUMN_TYPES) {
+      const option = createElement('option', { value: type }, COLUMN_TYPE_LABELS[type]);
+      if (column.columnType === type) {
+        option.selected = true;
+      }
+      typeSelect.appendChild(option);
+    }
+  }
+  row.appendChild(typeSelect);
+  
+  // Delete button
+  const deleteBtn = createElement('button', {
+    className: 'column-config-delete-btn',
+    dataset: { action: 'delete', columnId: column.id }
+  });
+  deleteBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M18 6L6 18M6 6l12 12"/>
+  </svg>`;
+  row.appendChild(deleteBtn);
+  
+  return row;
+}
+
+/**
+ * Renders the column configuration modal
+ * @param {string[]} sheetHeaders - Available headers from the sheet
+ * @param {ColumnsConfiguration} config - Current configuration
+ */
+export function renderColumnConfigModal(sheetHeaders, config) {
+  const container = document.getElementById('column-config-list');
+  const errorContainer = document.getElementById('column-config-error');
+  
+  if (!container) return;
+  
+  // Cache headers and config for updates
+  cachedConfigHeaders = sheetHeaders;
+  editingColumnsConfig = JSON.parse(JSON.stringify(config)); // Deep clone
+  
+  container.innerHTML = '';
+  
+  // Get ordered columns
+  const orderedColumns = [...editingColumnsConfig.columns].sort((a, b) => a.order - b.order);
+  
+  // Render each column row
+  orderedColumns.forEach((column, index) => {
+    const row = renderColumnConfigRow(column, sheetHeaders, index, orderedColumns.length);
+    container.appendChild(row);
+  });
+  
+  // Update confirm button state
+  updateColumnConfigConfirmButton();
+  
+  // Hide error container
+  if (errorContainer) {
+    errorContainer.hidden = true;
+  }
+}
+
+/**
+ * Gets the current configuration from the modal
+ * @returns {ColumnsConfiguration}
+ */
+export function getColumnConfigFromModal() {
+  return editingColumnsConfig || { columns: [] };
+}
+
+/**
+ * Updates the editing configuration when a field changes
+ * @param {string} columnId
+ * @param {string} field
+ * @param {string} value
+ */
+export function updateColumnConfigField(columnId, field, value) {
+  if (!editingColumnsConfig) return;
+  
+  const column = editingColumnsConfig.columns.find(c => c.id === columnId);
+  if (!column) return;
+  
+  column[field] = value;
+  updateColumnConfigConfirmButton();
+}
+
+/**
+ * Reorders a column by drag and drop
+ * @param {string} draggedId - ID of the dragged column
+ * @param {string} targetId - ID of the target column (drop position)
+ */
+export function reorderColumnByDrag(draggedId, targetId) {
+  if (!editingColumnsConfig) return;
+  
+  const columns = editingColumnsConfig.columns;
+  const orderedColumns = [...columns].sort((a, b) => a.order - b.order);
+  
+  const draggedColumn = orderedColumns.find(c => c.id === draggedId);
+  const targetColumn = orderedColumns.find(c => c.id === targetId);
+  
+  if (!draggedColumn || !targetColumn) return;
+  
+  // Don't allow dragging name column or dropping onto name column
+  if (draggedColumn.columnType === 'name' || targetColumn.columnType === 'name') return;
+  
+  const draggedIndex = orderedColumns.indexOf(draggedColumn);
+  const targetIndex = orderedColumns.indexOf(targetColumn);
+  
+  // Remove dragged from array and insert at target position
+  orderedColumns.splice(draggedIndex, 1);
+  orderedColumns.splice(targetIndex, 0, draggedColumn);
+  
+  // Update order values
+  orderedColumns.forEach((c, i) => c.order = i);
+  
+  // Re-render
+  renderColumnConfigModal(cachedConfigHeaders, editingColumnsConfig);
+}
+
+/**
+ * Deletes a column from the configuration
+ * @param {string} columnId
+ */
+export function deleteColumnFromConfig(columnId) {
+  if (!editingColumnsConfig) return;
+  
+  // Don't delete name column
+  const column = editingColumnsConfig.columns.find(c => c.id === columnId);
+  if (!column || column.columnType === 'name') return;
+  
+  editingColumnsConfig.columns = editingColumnsConfig.columns.filter(c => c.id !== columnId);
+  
+  // Re-order remaining columns
+  const orderedColumns = [...editingColumnsConfig.columns].sort((a, b) => a.order - b.order);
+  orderedColumns.forEach((c, i) => c.order = i);
+  
+  // Re-render
+  renderColumnConfigModal(cachedConfigHeaders, editingColumnsConfig);
+}
+
+/**
+ * Adds a new column to the configuration
+ * @param {ColumnConfig} column
+ */
+export function addColumnToConfig(column) {
+  if (!editingColumnsConfig) return;
+  
+  editingColumnsConfig.columns.push(column);
+  
+  // Re-render
+  renderColumnConfigModal(cachedConfigHeaders, editingColumnsConfig);
+}
+
+/**
+ * Updates the confirm button state
+ */
+export function updateColumnConfigConfirmButton() {
+  const confirmBtn = document.getElementById('confirm-column-config');
+  if (!confirmBtn || !editingColumnsConfig) return;
+  
+  // Must have at least the name column with a sheet column selected
+  const nameColumn = editingColumnsConfig.columns.find(c => c.columnType === 'name');
+  const hasValidNameColumn = nameColumn && nameColumn.sheetColumn;
+  
+  // Only the name column is required - other columns are optional
+  // But if other columns exist, they must have sheetColumn selected to be included
+  confirmBtn.disabled = !hasValidNameColumn;
+}
+
+/**
+ * Gets the valid configuration (filters out incomplete columns except name)
+ * @returns {ColumnsConfiguration}
+ */
+export function getValidColumnConfig() {
+  if (!editingColumnsConfig) return { columns: [] };
+  
+  // Filter out incomplete non-name columns
+  const validColumns = editingColumnsConfig.columns.filter(col => {
+    // Name column is always included (but must have sheetColumn)
+    if (col.columnType === 'name') {
+      return col.sheetColumn;
+    }
+    // Other columns need both displayName and sheetColumn
+    return col.sheetColumn && col.displayName;
+  });
+  
+  // Re-order
+  const ordered = [...validColumns].sort((a, b) => a.order - b.order);
+  ordered.forEach((c, i) => c.order = i);
+  
+  return { columns: ordered };
+}
+
+/**
+ * Shows error in column config modal
+ * @param {string} message
+ */
+export function showColumnConfigError(message) {
+  const errorContainer = document.getElementById('column-config-error');
+  if (errorContainer) {
+    errorContainer.textContent = message;
+    errorContainer.hidden = false;
+  }
+}
+
+/**
+ * Hides error in column config modal
+ */
+export function hideColumnConfigError() {
+  const errorContainer = document.getElementById('column-config-error');
+  if (errorContainer) {
+    errorContainer.hidden = true;
+  }
+}
+
+/**
+ * Shows the column configuration modal
+ */
+export function showColumnConfigModal() {
+  const modal = document.getElementById('column-config-modal');
+  if (modal) {
+    modal.hidden = false;
+  }
+}
+
+/**
+ * Hides the column configuration modal
+ */
+export function hideColumnConfigModal() {
+  const modal = document.getElementById('column-config-modal');
+  if (modal) {
+    modal.hidden = true;
+  }
+  editingColumnsConfig = null;
+}
+
+
+/* ============================================================================
+   Teams Display Columns Modal
+   ============================================================================ */
+
+/** @type {import('../storage/persistence.js').TeamsDisplayConfig|null} */
+let editingTeamsDisplayConfig = null;
+
+/**
+ * Renders the teams display columns modal
+ * @param {import('../storage/persistence.js').ColumnsConfiguration} columnsConfig - All configured columns
+ * @param {import('../storage/persistence.js').TeamsDisplayConfig|null} displayConfig - Current display config
+ */
+export function renderTeamsDisplayModal(columnsConfig, displayConfig) {
+  const container = document.getElementById('teams-display-columns');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  const orderedColumns = getOrderedColumns(columnsConfig);
+  const nonNameColumnIds = orderedColumns
+    .filter(c => c.columnType !== 'name')
+    .map(c => c.id);
+  
+  // Initialize editing config
+  if (!displayConfig) {
+    // No existing config - all non-name columns visible by default
+    editingTeamsDisplayConfig = {
+      visibleColumnIds: [...nonNameColumnIds]
+    };
+  } else {
+    // Existing config - keep previous selections, but add any NEW columns as visible by default
+    const previousVisibleIds = new Set(displayConfig.visibleColumnIds);
+    const allCurrentColumnIds = new Set(orderedColumns.map(c => c.id));
+    
+    // Start with previous visible IDs that still exist in current config
+    const validPreviousIds = displayConfig.visibleColumnIds.filter(id => allCurrentColumnIds.has(id));
+    
+    // Add any new column IDs that weren't in the previous config (default to visible)
+    const newColumnIds = nonNameColumnIds.filter(id => !previousVisibleIds.has(id));
+    
+    editingTeamsDisplayConfig = {
+      visibleColumnIds: [...validPreviousIds, ...newColumnIds]
+    };
+  }
+  
+  // Use editing config for visibility (so checkboxes match initialized state)
+  const visibleIds = new Set(editingTeamsDisplayConfig.visibleColumnIds);
+  
+  for (const column of orderedColumns) {
+    const isNameColumn = column.columnType === 'name';
+    const isChecked = isNameColumn || visibleIds.has(column.id);
+    
+    const row = createElement('div', {
+      className: `teams-display-column-row ${isChecked ? 'checked' : ''} ${isNameColumn ? 'is-name' : ''}`,
+      dataset: { columnId: column.id }
+    });
+    
+    const checkbox = createElement('input', {
+      type: 'checkbox',
+      className: 'teams-display-checkbox',
+      checked: isChecked,
+      disabled: isNameColumn,
+      dataset: { columnId: column.id }
+    });
+    row.appendChild(checkbox);
+    
+    const name = createElement('span', { className: 'teams-display-column-name' }, column.displayName);
+    row.appendChild(name);
+    
+    const typeClass = `column-type-${column.columnType}`;
+    const type = createElement('span', { 
+      className: `teams-display-column-type ${typeClass}` 
+    }, COLUMN_TYPE_LABELS[column.columnType] || column.columnType);
+    row.appendChild(type);
+    
+    container.appendChild(row);
+  }
+}
+
+/**
+ * Gets the current teams display config from the modal
+ * @returns {import('../storage/persistence.js').TeamsDisplayConfig}
+ */
+export function getTeamsDisplayConfigFromModal() {
+  return editingTeamsDisplayConfig || { visibleColumnIds: [] };
+}
+
+/**
+ * Updates the editing teams display config when a checkbox changes
+ * @param {string} columnId
+ * @param {boolean} isChecked
+ */
+export function updateTeamsDisplayColumn(columnId, isChecked) {
+  if (!editingTeamsDisplayConfig) return;
+  
+  const row = document.querySelector(`.teams-display-column-row[data-column-id="${columnId}"]`);
+  
+  if (isChecked) {
+    if (!editingTeamsDisplayConfig.visibleColumnIds.includes(columnId)) {
+      editingTeamsDisplayConfig.visibleColumnIds.push(columnId);
+    }
+    row?.classList.add('checked');
+  } else {
+    editingTeamsDisplayConfig.visibleColumnIds = 
+      editingTeamsDisplayConfig.visibleColumnIds.filter(id => id !== columnId);
+    row?.classList.remove('checked');
+  }
+}
+
+/**
+ * Shows the teams display modal
+ */
+export function showTeamsDisplayModal() {
+  const modal = document.getElementById('teams-display-modal');
+  if (modal) {
+    modal.hidden = false;
+  }
+}
+
+/**
+ * Hides the teams display modal
+ */
+export function hideTeamsDisplayModal() {
+  const modal = document.getElementById('teams-display-modal');
+  if (modal) {
+    modal.hidden = true;
+  }
+  editingTeamsDisplayConfig = null;
 }
 
 

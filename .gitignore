@@ -61,5 +61,8 @@ output/
 # Setup script config (contains sensitive paths)
 scripts/.env.setup
 
+# Local development env (contains API keys)
+scripts/dev.env
+
 .ignoredocs/
 .cursor/debug.log

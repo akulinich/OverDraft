@@ -16,6 +16,18 @@ import { t, isInitialized as isI18nInitialized } from '../i18n/index.js';
 export function createElement(tag, attrs = {}, content = null) {
   const el = document.createElement(tag);
   
+  // Boolean properties that need to be set as properties, not attributes
+  // Map attribute names to their DOM property names
+  const booleanPropMap = {
+    'checked': 'checked',
+    'disabled': 'disabled',
+    'selected': 'selected',
+    'readonly': 'readOnly',  // DOM property is camelCase
+    'required': 'required',
+    'multiple': 'multiple',
+    'autofocus': 'autofocus'
+  };
+  
   for (const [key, value] of Object.entries(attrs)) {
     if (key === 'className') {
       el.className = value;
@@ -23,6 +35,9 @@ export function createElement(tag, attrs = {}, content = null) {
       Object.assign(el.dataset, value);
     } else if (key.startsWith('on') && typeof value === 'function') {
       el.addEventListener(key.slice(2).toLowerCase(), value);
+    } else if (key in booleanPropMap) {
+      // Boolean properties need to be set as properties, not attributes
+      el[booleanPropMap[key]] = Boolean(value);
     } else {
       el.setAttribute(key, value);
     }

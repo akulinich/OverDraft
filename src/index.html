@@ -231,35 +231,80 @@
               <span id="settings-build-time" class="build-time"></span>
             </div>
           </div>
+          <div class="settings-section">
+            <h3 data-i18n="settings.dangerZone">Danger Zone</h3>
+            <button id="reset-app" class="btn btn-danger">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                <line x1="10" y1="11" x2="10" y2="17"/>
+                <line x1="14" y1="11" x2="14" y2="17"/>
+              </svg>
+              <span data-i18n="settings.resetApp">Reset OverDraft</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Column Mapping Modal -->
-    <div id="column-mapping-modal" class="modal" hidden>
+    <!-- Column Configuration Modal -->
+    <div id="column-config-modal" class="modal" hidden>
       <div class="modal-backdrop"></div>
       <div class="modal-content modal-content-wide">
         <div class="modal-header">
-          <h2 data-i18n="columnMapping.title">Настройка колонок</h2>
-          <button id="close-column-mapping" class="btn-icon" aria-label="Close">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-          </button>
+          <h2 data-i18n="columnConfig.title">Настройка колонок</h2>
         </div>
         <div class="modal-body">
-          <p class="modal-description" id="column-mapping-description" data-i18n="columnMapping.description">
-            Некоторые обязательные колонки не найдены автоматически.
-            Укажите соответствие колонок в вашей таблице:
+          <p class="modal-description" id="column-config-description" data-i18n="columnConfig.description">
+            Настройте ключевые столбцы для отображения в таблице игроков.
+            Столбец "Имя" обязателен.
           </p>
-          <div id="column-mapping-table" class="column-mapping-table">
-            <!-- Mapping rows will be rendered here -->
+          
+          <!-- Column configuration list -->
+          <div id="column-config-list" class="column-config-list">
+            <!-- Column rows will be rendered here dynamically -->
           </div>
-          <div id="column-mapping-error" class="column-mapping-error" hidden></div>
+          
+          <!-- Add column button -->
+          <button id="add-column-btn" class="btn btn-secondary add-column-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span data-i18n="columnConfig.addColumn">Добавить столбец</span>
+          </button>
+          
+          <!-- Error display -->
+          <div id="column-config-error" class="column-config-error" hidden></div>
         </div>
         <div class="modal-footer">
-          <button id="confirm-column-mapping" class="btn btn-primary" disabled>
-            <span class="btn-text" data-i18n="columnMapping.confirm">Подтвердить</span>
+          <button id="confirm-column-config" class="btn btn-primary" disabled>
+            <span class="btn-text" data-i18n="columnConfig.confirm">Подтвердить</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Teams Display Columns Modal -->
+    <div id="teams-display-modal" class="modal" hidden>
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 data-i18n="teamsDisplay.title">Столбцы в командах</h2>
+        </div>
+        <div class="modal-body">
+          <p class="modal-description" data-i18n="teamsDisplay.description">
+            Выберите какие ключевые столбцы отображать в карточках игроков команды.
+            Имя отображается всегда.
+          </p>
+          
+          <!-- Column checkboxes list -->
+          <div id="teams-display-columns" class="teams-display-columns">
+            <!-- Column checkboxes will be rendered here dynamically -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="confirm-teams-display" class="btn btn-primary">
+            <span class="btn-text" data-i18n="teamsDisplay.confirm">Подтвердить</span>
           </button>
         </div>
       </div>
@@ -380,34 +425,39 @@
         </nav>
 
         <!-- Player Filters -->
-        <div id="player-filters" class="filters-group" hidden>
-          <button class="filter-btn" data-filter="available" data-i18n-title="filters.availableOnly" title="Только доступные игроки">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-            </svg>
-          </button>
-          <div class="filter-divider"></div>
-          <button class="filter-btn" data-filter="tank" data-i18n-title="filters.tankOnly" title="Только танки">
-            <svg class="role-filter-icon" width="18" height="18" viewBox="0 0 24 24">
-              <use href="./public/icons/roles/tank.svg#icon"></use>
-            </svg>
-            <img class="role-filter-img" src="./public/icons/roles/tank.svg" alt="Tank" width="18" height="18">
-          </button>
-          <button class="filter-btn" data-filter="dps" data-i18n-title="filters.dpsOnly" title="Только ДД">
-            <svg class="role-filter-icon" width="18" height="18" viewBox="0 0 24 24">
-              <use href="./public/icons/roles/damage.svg#icon"></use>
-            </svg>
-            <img class="role-filter-img" src="./public/icons/roles/damage.svg" alt="DPS" width="18" height="18">
-          </button>
-          <button class="filter-btn" data-filter="support" data-i18n-title="filters.supportOnly" title="Только саппорты">
-            <svg class="role-filter-icon" width="18" height="18" viewBox="0 0 24 24">
-              <use href="./public/icons/roles/support.svg#icon"></use>
-            </svg>
-            <img class="role-filter-img" src="./public/icons/roles/support.svg" alt="Support" width="18" height="18">
-          </button>
+        <div id="player-filters" class="filters-container">
+          <!-- Available players filter (shown only when teams sheet is connected) -->
+          <div id="filter-available" class="filters-group" hidden>
+            <button class="filter-btn" data-filter="available" data-i18n-title="filters.availableOnly" title="Только доступные игроки">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+            </button>
+          </div>
+          <!-- Role filters (shown only when at least one role column is configured) -->
+          <div id="filter-roles" class="filters-group" hidden>
+            <button class="filter-btn" data-filter="tank" data-i18n-title="filters.tankOnly" title="Только танки">
+              <svg class="role-filter-icon" width="18" height="18" viewBox="0 0 24 24">
+                <use href="./public/icons/roles/tank.svg#icon"></use>
+              </svg>
+              <img class="role-filter-img" src="./public/icons/roles/tank.svg" alt="Tank" width="18" height="18">
+            </button>
+            <button class="filter-btn" data-filter="dps" data-i18n-title="filters.dpsOnly" title="Только ДД">
+              <svg class="role-filter-icon" width="18" height="18" viewBox="0 0 24 24">
+                <use href="./public/icons/roles/damage.svg#icon"></use>
+              </svg>
+              <img class="role-filter-img" src="./public/icons/roles/damage.svg" alt="DPS" width="18" height="18">
+            </button>
+            <button class="filter-btn" data-filter="support" data-i18n-title="filters.supportOnly" title="Только саппорты">
+              <svg class="role-filter-icon" width="18" height="18" viewBox="0 0 24 24">
+                <use href="./public/icons/roles/support.svg#icon"></use>
+              </svg>
+              <img class="role-filter-img" src="./public/icons/roles/support.svg" alt="Support" width="18" height="18">
+            </button>
+          </div>
         </div>
       </div>
 

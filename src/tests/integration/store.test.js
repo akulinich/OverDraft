@@ -12,7 +12,17 @@ vi.mock('../../js/storage/persistence.js', () => ({
   saveColumnMapping: vi.fn(),
   loadLocalCSVData: vi.fn(() => null),
   saveLocalCSVData: vi.fn(),
-  removeLocalCSVData: vi.fn()
+  removeLocalCSVData: vi.fn(),
+  // New columns configuration functions
+  loadColumnsConfiguration: vi.fn(() => null),
+  saveColumnsConfiguration: vi.fn(),
+  removeColumnsConfiguration: vi.fn(),
+  loadTeamsDisplayConfig: vi.fn(() => null),
+  saveTeamsDisplayConfig: vi.fn(),
+  removeTeamsDisplayConfig: vi.fn(),
+  generateColumnId: vi.fn(() => `col_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`),
+  getOrderedColumns: vi.fn((config) => config?.columns ? [...config.columns].sort((a, b) => a.order - b.order) : []),
+  getColumnByType: vi.fn((config, type) => config?.columns?.find(c => c.columnType === type) || null)
 }));
 
 // Import store after mocking

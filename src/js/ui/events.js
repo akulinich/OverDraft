@@ -10,6 +10,7 @@ import * as renderer from './renderer.js';
 import { validateTeamsDataWithConfig } from '../validation/schema.js';
 import { exportConfiguration, isExportAvailable } from '../utils/export.js';
 import { t, toggleLanguage, getLanguage, subscribe as subscribeToLanguage } from '../i18n/index.js';
+import { clearAll } from '../storage/persistence.js';
 
 /** @type {'google'|'local'} Current source type in setup modal */
 let currentSourceType = 'google';
@@ -39,10 +40,16 @@ let onTeamPlayerSelect = null;
 let onColumnMappingConfirmed = null;
 
 /** @type {function|null} */
+let onColumnConfigConfirmed = null;
+
+/** @type {function|null} */
 let onTeamsLayoutConfirmed = null;
 
 /** @type {function|null} */
 let onTeamsLayoutCancelled = null;
+
+/** @type {function|null} */
+let onTeamsDisplayConfigConfirmed = null;
 
 /** @type {function|null} */
 let onConfigureTeamsLayout = null;
@@ -773,6 +780,24 @@ function setupSettingsModal() {
     url.searchParams.set('_refresh', Date.now().toString());
     window.location.href = url.toString();
   });
+  
+  // Reset app button - clears all localStorage and reloads
+  document.getElementById('reset-app')?.addEventListener('click', () => {
+    // Confirm with user
+    const confirmed = confirm(t('settings.resetConfirm'));
+    if (!confirmed) return;
+    
+    // Clear all localStorage data
+    clearAll();
+    
+    // Clear service worker caches if any
+    if ('caches' in window) {
+      caches.keys().then(names => names.forEach(name => caches.delete(name)));
+    }
+    
+    // Reload the page
+    window.location.href = window.location.origin + window.location.pathname;
+  });
 }
 
 /**
@@ -1056,6 +1081,178 @@ function setupColumnMappingModal() {
 }
 
 // ============================================================================
+// Column Configuration Modal (new dynamic system)
+// ============================================================================
+
+/** @type {import('../storage/persistence.js').ColumnsConfiguration|null} */
+let pendingColumnsConfig = null;
+
+/**
+ * Opens the column configuration modal
+ * @param {string[]} headers - Sheet headers
+ * @param {string[][]} data - Sheet data for validation
+ * @param {import('../storage/persistence.js').ColumnsConfiguration} config - Current or default config
+ */
+export function openColumnConfigModal(headers, data, config) {
+  cachedSheetHeaders = headers;
+  cachedSheetData = data;
+  pendingColumnsConfig = config;
+  
+  renderer.renderColumnConfigModal(headers, config);
+  renderer.showColumnConfigModal();
+}
+
+/**
+ * Sets up column configuration modal event handlers
+ */
+function setupColumnConfigModal() {
+  const modal = document.getElementById('column-config-modal');
+  const confirmBtn = document.getElementById('confirm-column-config');
+  const addColumnBtn = document.getElementById('add-column-btn');
+  const configList = document.getElementById('column-config-list');
+  
+  // Backdrop click - do nothing, user must click Confirm to close
+  modal?.addEventListener('click', (e) => {
+    if (e.target?.classList?.contains('modal-backdrop')) {
+      // Prevent closing - user must use Confirm button
+      e.stopPropagation();
+    }
+  });
+  
+  // Handle input changes
+  configList?.addEventListener('input', (e) => {
+    const target = e.target;
+    if (!target?.dataset?.field || !target?.dataset?.columnId) return;
+    
+    renderer.updateColumnConfigField(target.dataset.columnId, target.dataset.field, target.value);
+  });
+  
+  // Handle select changes
+  configList?.addEventListener('change', (e) => {
+    const target = e.target;
+    if (!target?.dataset?.field || !target?.dataset?.columnId) return;
+    
+    renderer.updateColumnConfigField(target.dataset.columnId, target.dataset.field, target.value);
+  });
+  
+  // Handle button clicks (delete)
+  configList?.addEventListener('click', (e) => {
+    const target = e.target.closest('button');
+    if (!target?.dataset?.action || !target?.dataset?.columnId) return;
+    
+    const action = target.dataset.action;
+    const columnId = target.dataset.columnId;
+    
+    if (action === 'delete') {
+      renderer.deleteColumnFromConfig(columnId);
+    }
+  });
+  
+  // Drag and drop for reordering
+  let draggedElement = null;
+  let draggedColumnId = null;
+  
+  configList?.addEventListener('dragstart', (e) => {
+    const row = e.target.closest('.column-config-row');
+    if (!row || row.classList.contains('is-name')) return;
+    
+    draggedElement = row;
+    draggedColumnId = row.dataset.columnId;
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', draggedColumnId);
+  });
+  
+  configList?.addEventListener('dragend', (e) => {
+    if (draggedElement) {
+      draggedElement.classList.remove('dragging');
+    }
+    draggedElement = null;
+    draggedColumnId = null;
+    
+    // Remove all drag-over states
+    configList.querySelectorAll('.column-config-row').forEach(row => {
+      row.classList.remove('drag-over');
+    });
+  });
+  
+  configList?.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    const row = e.target.closest('.column-config-row');
+    if (!row || row === draggedElement || row.classList.contains('is-name')) return;
+    
+    // Add visual indicator
+    configList.querySelectorAll('.column-config-row').forEach(r => {
+      r.classList.remove('drag-over');
+    });
+    row.classList.add('drag-over');
+  });
+  
+  configList?.addEventListener('dragleave', (e) => {
+    const row = e.target.closest('.column-config-row');
+    if (row) {
+      row.classList.remove('drag-over');
+    }
+  });
+  
+  configList?.addEventListener('drop', (e) => {
+    e.preventDefault();
+    
+    const targetRow = e.target.closest('.column-config-row');
+    if (!targetRow || !draggedColumnId || targetRow.classList.contains('is-name')) return;
+    
+    const targetColumnId = targetRow.dataset.columnId;
+    if (targetColumnId === draggedColumnId) return;
+    
+    // Reorder columns
+    renderer.reorderColumnByDrag(draggedColumnId, targetColumnId);
+    
+    // Clean up
+    targetRow.classList.remove('drag-over');
+  });
+  
+  // Add column button
+  addColumnBtn?.addEventListener('click', () => {
+    const config = renderer.getColumnConfigFromModal();
+    const newOrder = config.columns.length;
+    
+    /** @type {import('../storage/persistence.js').ColumnConfig} */
+    const newColumn = {
+      id: store.createColumnConfig('Новый столбец', '', 'text', newOrder).id,
+      displayName: 'Новый столбец',
+      sheetColumn: '',
+      columnType: 'text',
+      order: newOrder
+    };
+    
+    renderer.addColumnToConfig(newColumn);
+  });
+  
+  // Confirm button
+  confirmBtn?.addEventListener('click', () => {
+    // Get only valid/complete columns (filters out incomplete non-name columns)
+    const config = renderer.getValidColumnConfig();
+    
+    // Save configuration
+    const sheet = store.getFirstSheet();
+    if (sheet) {
+      const sheetKey = `${sheet.spreadsheetId}_${sheet.gid}`;
+      store.setColumnsConfiguration(sheetKey, config);
+    }
+    
+    // Hide modal
+    renderer.hideColumnConfigModal();
+    
+    // Trigger callback
+    if (onColumnConfigConfirmed) {
+      onColumnConfigConfirmed(config);
+    }
+  });
+}
+
+// ============================================================================
 // Teams Layout Configuration Modal
 // ============================================================================
 
@@ -1097,6 +1294,84 @@ function validateAndUpdateTeamsLayout() {
     renderer.setTeamsLayoutConfirmEnabled(result.data !== null && result.data.teams.length > 0);
   }
 }
+
+// ============================================================================
+// Teams Display Columns Modal
+// ============================================================================
+
+/**
+ * Opens the teams display columns modal
+ * @param {import('../storage/persistence.js').ColumnsConfiguration} columnsConfig
+ * @param {import('../storage/persistence.js').TeamsDisplayConfig|null} displayConfig
+ */
+export function openTeamsDisplayModal(columnsConfig, displayConfig) {
+  renderer.renderTeamsDisplayModal(columnsConfig, displayConfig);
+  renderer.showTeamsDisplayModal();
+}
+
+/**
+ * Sets up teams display modal event handlers
+ */
+function setupTeamsDisplayModal() {
+  const modal = document.getElementById('teams-display-modal');
+  const confirmBtn = document.getElementById('confirm-teams-display');
+  const columnsContainer = document.getElementById('teams-display-columns');
+  
+  // Prevent backdrop click from closing the modal
+  modal?.addEventListener('click', (e) => {
+    if (e.target?.classList?.contains('modal-backdrop')) {
+      e.stopPropagation();
+    }
+  });
+  
+  // Handle checkbox changes
+  columnsContainer?.addEventListener('change', (e) => {
+    const target = e.target;
+    if (target?.classList?.contains('teams-display-checkbox')) {
+      const columnId = target.dataset.columnId;
+      renderer.updateTeamsDisplayColumn(columnId, target.checked);
+    }
+  });
+  
+  // Handle row clicks to toggle checkboxes
+  columnsContainer?.addEventListener('click', (e) => {
+    const row = e.target.closest('.teams-display-column-row');
+    if (!row || row.classList.contains('is-name')) return;
+    
+    // Don't toggle if clicking directly on checkbox
+    if (e.target.classList.contains('teams-display-checkbox')) return;
+    
+    const checkbox = row.querySelector('.teams-display-checkbox');
+    if (checkbox && !checkbox.disabled) {
+      checkbox.checked = !checkbox.checked;
+      const columnId = checkbox.dataset.columnId;
+      renderer.updateTeamsDisplayColumn(columnId, checkbox.checked);
+    }
+  });
+  
+  // Confirm button
+  confirmBtn?.addEventListener('click', () => {
+    const config = renderer.getTeamsDisplayConfigFromModal();
+    
+    // Save configuration
+    const sheet = store.getFirstSheet();
+    if (sheet) {
+      const sheetKey = `${sheet.spreadsheetId}_${sheet.gid}`;
+      store.setTeamsDisplayConfiguration(sheetKey, config);
+    }
+    
+    renderer.hideTeamsDisplayModal();
+    
+    // Trigger callback
+    if (onTeamsDisplayConfigConfirmed) {
+      onTeamsDisplayConfigConfirmed(config);
+    }
+  });
+}
+
+// ============================================================================
+// Teams Layout Configuration Modal
+// ============================================================================
 
 /**
  * Sets up teams layout modal event handlers
@@ -1152,7 +1427,9 @@ function setupTeamsLayoutModal() {
  * @param {function} [callbacks.onFilterChange] - Called when a filter is toggled
  * @param {function} [callbacks.onPlayerRowSelect] - Called when a player row is clicked in players table
  * @param {function} [callbacks.onTeamPlayerSelect] - Called when a player is clicked in teams view
- * @param {function} [callbacks.onColumnMappingConfirmed] - Called when column mapping is confirmed
+ * @param {function} [callbacks.onColumnMappingConfirmed] - Called when column mapping is confirmed (deprecated)
+ * @param {function} [callbacks.onColumnConfigConfirmed] - Called when column configuration is confirmed
+ * @param {function} [callbacks.onTeamsDisplayConfigConfirmed] - Called when teams display config is confirmed
  * @param {function} [callbacks.onConfigureTeamsLayout] - Called when teams layout config is requested
  */
 export function initializeEvents(callbacks) {
@@ -1162,6 +1439,8 @@ export function initializeEvents(callbacks) {
   onPlayerRowSelect = callbacks.onPlayerRowSelect || null;
   onTeamPlayerSelect = callbacks.onTeamPlayerSelect || null;
   onColumnMappingConfirmed = callbacks.onColumnMappingConfirmed || null;
+  onColumnConfigConfirmed = callbacks.onColumnConfigConfirmed || null;
+  onTeamsDisplayConfigConfirmed = callbacks.onTeamsDisplayConfigConfirmed || null;
   onConfigureTeamsLayout = callbacks.onConfigureTeamsLayout || null;
   
   setupUrlValidation();
@@ -1175,6 +1454,8 @@ export function initializeEvents(callbacks) {
   setupFilterButtons();
   setupPlayerRowClicks();
   setupColumnMappingModal();
+  setupColumnConfigModal();
+  setupTeamsDisplayModal();
   setupTeamsLayoutModal();
   setupLanguageButton();
 }

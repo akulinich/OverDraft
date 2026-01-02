@@ -29,10 +29,42 @@
 
 Visit the [live demo](https://akulinich.github.io/OverDraft/) — no installation required.
 
-### Run Locally
+### Run Locally (Full Stack)
+
+For development with the API server (recommended):
 
 ```bash
 git clone https://github.com/akulinich/OverDraft.git
+cd OverDraft
+
+# 1. Configure environment
+copy scripts\dev.env.example scripts\dev.env
+# Edit scripts\dev.env and set your GOOGLE_API_KEY
+
+# 2. Start both server and client
+.\dev.bat
+```
+
+This starts:
+- API server at http://localhost:8000
+- Frontend at http://localhost:3000
+
+#### Development Script Options
+
+| Command | Description |
+|---------|-------------|
+| `.\dev.bat` | Start both server and client |
+| `.\dev.bat -ServerOnly` | Start only API server |
+| `.\dev.bat -ClientOnly` | Start only frontend |
+| `.\dev.bat -NoBrowser` | Don't auto-open browser |
+| `.\dev.bat -Port 5000` | Custom client port |
+| `.\dev.bat -ApiPort 9000` | Custom server port |
+
+### Run Frontend Only
+
+For frontend-only development (uses local CSV files):
+
+```bash
 cd OverDraft/src
 npm install
 npm run dev
@@ -90,7 +122,7 @@ Output: `src/dist/`
 
 ```
 OverDraft/
-├── src/
+├── src/                 # Frontend application
 │   ├── js/              # Application modules
 │   │   ├── api/         # Data fetching (Sheets, CSV, OverFast)
 │   │   ├── i18n/        # Internationalization
@@ -103,17 +135,28 @@ OverDraft/
 │   ├── public/          # Static assets (icons, locales)
 │   ├── tests/           # Unit & integration tests
 │   └── docs/            # Architecture documentation
+├── server/              # Python API server
+│   ├── app/             # FastAPI application
+│   └── tests/           # Server tests
+├── scripts/             # Development & deployment scripts
+├── dev.bat              # Local development launcher (Windows)
+├── dev.ps1              # Local development script (PowerShell)
 ├── .github/workflows/   # CI/CD (GitHub Actions)
 └── .husky/              # Git hooks (pre-commit tests)
 ```
 
 ## 🛠️ Tech Stack
 
+### Frontend
 - **Vanilla JS** (ES Modules)
 - **Vite** — build tool
 - **Vitest** — testing framework
 - **GitHub Pages** — hosting
-- **Google Visualization API** — Sheets data (no API key)
+
+### Backend
+- **Python** (FastAPI)
+- **uvicorn** — ASGI server
+- **Google Sheets API** — data fetching with caching
 
 ## 📄 License
 

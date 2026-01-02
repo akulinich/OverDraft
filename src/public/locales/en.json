@@ -18,7 +18,7 @@
     "localPlayersFile": "CSV file with player data",
     "localTeamsFile": "CSV file with team data (optional)",
     "selectFile": "Select file...",
-    "connect": "Connect",
+    "connect": "Connect and Configure",
     "checking": "Checking...",
     "notPublishedTitle": "Sheet is not published",
     "notPublishedDescription": "To allow the app to read data, you need to publish the sheet:",
@@ -48,6 +48,9 @@
     "changeSheets": "Change sheets",
     "application": "Application",
     "refreshApp": "Refresh application",
+    "dangerZone": "Danger Zone",
+    "resetApp": "Reset OverDraft",
+    "resetConfirm": "Are you sure? This will delete all settings, sheets, and configurations. This action cannot be undone.",
     "pollingInterval": "Polling Interval",
     "theme": "Theme",
     "themeLight": "Light",
@@ -62,6 +65,25 @@
     "confirm": "Confirm",
     "columnNotFound": "Column not found",
     "columnNotNumeric": "Column \"{column}\" does not contain numeric data"
+  },
+  "columnConfig": {
+    "title": "Column Configuration",
+    "description": "Configure key columns to display in the players table. The Name column is required.",
+    "addColumn": "Add column",
+    "confirm": "Confirm",
+    "selectColumn": "-- select column --",
+    "columnTypes": {
+      "name": "Name",
+      "role": "Role",
+      "rating": "Rating",
+      "heroes": "Heroes",
+      "text": "Text"
+    }
+  },
+  "teamsDisplay": {
+    "title": "Team Columns",
+    "description": "Select which key columns to display in team player cards. Name is always shown.",
+    "confirm": "Confirm"
   },
   "teamsLayout": {
     "title": "Teams Table Layout Configuration",
@@ -91,6 +113,7 @@
     "role": "Role",
     "heroes": "Heroes",
     "allData": "All data",
+    "otherData": "Other data",
     "nickname": "Player nickname"
   },
   "teams": {

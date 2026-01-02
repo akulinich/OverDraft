@@ -236,7 +236,7 @@ describe('Persistence Layer', () => {
       
       clearAll();
       
-      expect(localStorage.removeItem).toHaveBeenCalledTimes(7); // All keys including language 6 storage keys
+      expect(localStorage.removeItem).toHaveBeenCalledTimes(9); // All 9 storage keys
     });
   });
 

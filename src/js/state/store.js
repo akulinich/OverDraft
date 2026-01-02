@@ -2,11 +2,36 @@
  * In-memory state management
  */
 
-import { loadConfiguredSheets, loadSettings, loadTeamsSheet, saveConfiguredSheets, saveSettings, saveTeamsSheet, loadColumnMapping, saveColumnMapping, loadLocalCSVData, saveLocalCSVData, removeLocalCSVData } from '../storage/persistence.js';
+import { 
+  loadConfiguredSheets, 
+  loadSettings, 
+  loadTeamsSheet, 
+  saveConfiguredSheets, 
+  saveSettings, 
+  saveTeamsSheet, 
+  loadColumnMapping, 
+  saveColumnMapping, 
+  loadLocalCSVData, 
+  saveLocalCSVData, 
+  removeLocalCSVData,
+  loadColumnsConfiguration,
+  saveColumnsConfiguration,
+  removeColumnsConfiguration,
+  loadTeamsDisplayConfig,
+  saveTeamsDisplayConfig,
+  removeTeamsDisplayConfig,
+  generateColumnId,
+  getOrderedColumns,
+  getColumnByType
+} from '../storage/persistence.js';
 import { getSheetKey } from '../utils/parser.js';
 
 /**
  * @typedef {import('../storage/persistence.js').ColumnMapping} ColumnMapping
+ * @typedef {import('../storage/persistence.js').ColumnConfig} ColumnConfig
+ * @typedef {import('../storage/persistence.js').ColumnsConfiguration} ColumnsConfiguration
+ * @typedef {import('../storage/persistence.js').ColumnType} ColumnType
+ * @typedef {import('../storage/persistence.js').TeamsDisplayConfig} TeamsDisplayConfig
  */
 
 /**
@@ -63,7 +88,9 @@ import { getSheetKey } from '../utils/parser.js';
  * @property {boolean} overfastLoaded - Whether OverFast API data is loaded
  * @property {boolean} overfastLoading - Whether OverFast API data is currently loading
  * @property {FilterState} filters - Player list filters
- * @property {Map<string, ColumnMapping>} columnMappings - Column mappings by sheet key
+ * @property {Map<string, ColumnMapping>} columnMappings - Column mappings by sheet key (deprecated)
+ * @property {Map<string, ColumnsConfiguration>} columnsConfigs - Dynamic column configurations by sheet key
+ * @property {Map<string, TeamsDisplayConfig>} teamsDisplayConfigs - Teams display configs by sheet key
  */
 
 /**
@@ -93,7 +120,9 @@ let state = {
     availableOnly: false,
     role: null
   },
-  columnMappings: new Map()
+  columnMappings: new Map(),
+  columnsConfigs: new Map(),
+  teamsDisplayConfigs: new Map()
 };
 
 /** Column header patterns for player data parsing */
@@ -212,9 +241,24 @@ export function removeSheet(spreadsheetId, gid) {
 
 /**
  * Replaces all configured sheets with a single new one
+ * Only clears column configurations for sheets that are different from the new one
  * @param {SheetConfig} config 
  */
 export function replaceSheet(config) {
+  const newKey = getSheetKey(config.spreadsheetId, config.gid);
+  
+  // Clear old columns configuration only for sheets that are different from the new one
+  for (const oldSheet of state.configuredSheets) {
+    const oldKey = getSheetKey(oldSheet.spreadsheetId, oldSheet.gid);
+    // Only clear if it's a different sheet
+    if (oldKey !== newKey) {
+      state.columnsConfigs.delete(oldKey);
+      state.teamsDisplayConfigs.delete(oldKey);
+      removeColumnsConfiguration(oldKey);
+      removeTeamsDisplayConfig(oldKey);
+    }
+  }
+  
   const newConfig = {
     ...config,
     addedAt: new Date().toISOString()
@@ -435,11 +479,199 @@ export function getColumnMapping(sheetKey) {
  * Sets and saves column mapping for a sheet
  * @param {string} sheetKey
  * @param {ColumnMapping} mapping
+ * @deprecated Use setColumnsConfiguration instead
  */
 export function setColumnMapping(sheetKey, mapping) {
   state.columnMappings.set(sheetKey, mapping);
   saveColumnMapping(sheetKey, mapping);
   notify('columnMappings');
+}
+
+// ============================================================================
+// Dynamic Columns Configuration (new system)
+// ============================================================================
+
+/**
+ * Gets columns configuration for a sheet
+ * @param {string} sheetKey
+ * @returns {ColumnsConfiguration|null}
+ */
+export function getColumnsConfiguration(sheetKey) {
+  return state.columnsConfigs.get(sheetKey) || loadColumnsConfiguration(sheetKey);
+}
+
+/**
+ * Sets and saves columns configuration for a sheet
+ * @param {string} sheetKey
+ * @param {ColumnsConfiguration} config
+ */
+export function setColumnsConfiguration(sheetKey, config) {
+  state.columnsConfigs.set(sheetKey, config);
+  saveColumnsConfiguration(sheetKey, config);
+  notify('columnsConfigs');
+}
+
+/**
+ * Creates a new column configuration
+ * @param {string} displayName
+ * @param {string} sheetColumn
+ * @param {ColumnType} columnType
+ * @param {number} order
+ * @returns {ColumnConfig}
+ */
+export function createColumnConfig(displayName, sheetColumn, columnType, order) {
+  return {
+    id: generateColumnId(),
+    displayName,
+    sheetColumn,
+    columnType,
+    order
+  };
+}
+
+/**
+ * Adds a column to an existing configuration
+ * @param {string} sheetKey
+ * @param {ColumnConfig} column
+ */
+export function addColumnToConfiguration(sheetKey, column) {
+  const config = getColumnsConfiguration(sheetKey) || { columns: [] };
+  config.columns.push(column);
+  setColumnsConfiguration(sheetKey, config);
+}
+
+/**
+ * Removes a column from configuration by ID
+ * @param {string} sheetKey
+ * @param {string} columnId
+ */
+export function removeColumnFromConfiguration(sheetKey, columnId) {
+  const config = getColumnsConfiguration(sheetKey);
+  if (!config) return;
+  
+  // Don't allow removing the name column
+  const column = config.columns.find(c => c.id === columnId);
+  if (column?.columnType === 'name') {
+    console.warn('[Store] Cannot remove name column');
+    return;
+  }
+  
+  config.columns = config.columns.filter(c => c.id !== columnId);
+  // Re-order remaining columns
+  config.columns.forEach((c, i) => c.order = i);
+  setColumnsConfiguration(sheetKey, config);
+}
+
+/**
+ * Updates a column in the configuration
+ * @param {string} sheetKey
+ * @param {string} columnId
+ * @param {Partial<ColumnConfig>} updates
+ */
+export function updateColumnInConfiguration(sheetKey, columnId, updates) {
+  const config = getColumnsConfiguration(sheetKey);
+  if (!config) return;
+  
+  const column = config.columns.find(c => c.id === columnId);
+  if (!column) return;
+  
+  // Don't allow changing name column type
+  if (column.columnType === 'name' && updates.columnType && updates.columnType !== 'name') {
+    console.warn('[Store] Cannot change name column type');
+    return;
+  }
+  
+  Object.assign(column, updates);
+  setColumnsConfiguration(sheetKey, config);
+}
+
+/**
+ * Reorders columns in the configuration
+ * @param {string} sheetKey
+ * @param {string[]} orderedIds - Column IDs in new order
+ */
+export function reorderColumns(sheetKey, orderedIds) {
+  const config = getColumnsConfiguration(sheetKey);
+  if (!config) return;
+  
+  // Create a map of columns by ID
+  const columnsById = new Map(config.columns.map(c => [c.id, c]));
+  
+  // Rebuild columns array in new order
+  const reordered = [];
+  orderedIds.forEach((id, index) => {
+    const column = columnsById.get(id);
+    if (column) {
+      column.order = index;
+      reordered.push(column);
+    }
+  });
+  
+  // Add any columns that weren't in orderedIds (shouldn't happen, but safety)
+  config.columns.forEach(c => {
+    if (!orderedIds.includes(c.id)) {
+      c.order = reordered.length;
+      reordered.push(c);
+    }
+  });
+  
+  config.columns = reordered;
+  setColumnsConfiguration(sheetKey, config);
+}
+
+/**
+ * Gets ordered columns for a sheet
+ * @param {string} sheetKey
+ * @returns {ColumnConfig[]}
+ */
+export function getOrderedColumnsForSheet(sheetKey) {
+  const config = getColumnsConfiguration(sheetKey);
+  return config ? getOrderedColumns(config) : [];
+}
+
+/**
+ * Gets the name column for a sheet
+ * @param {string} sheetKey
+ * @returns {ColumnConfig|null}
+ */
+export function getNameColumn(sheetKey) {
+  const config = getColumnsConfiguration(sheetKey);
+  return config ? getColumnByType(config, 'name') : null;
+}
+
+/**
+ * Checks if there are any role columns configured for a sheet
+ * @param {string} sheetKey
+ * @returns {boolean}
+ */
+export function hasRoleColumns(sheetKey) {
+  const config = getColumnsConfiguration(sheetKey);
+  if (!config) return false;
+  return config.columns.some(c => c.columnType === 'role' && c.sheetColumn);
+}
+
+// ============================================================================
+// Teams Display Configuration
+// ============================================================================
+
+/**
+ * Gets teams display configuration for a sheet
+ * @param {string} sheetKey
+ * @returns {TeamsDisplayConfig|null}
+ */
+export function getTeamsDisplayConfiguration(sheetKey) {
+  return state.teamsDisplayConfigs.get(sheetKey) || loadTeamsDisplayConfig(sheetKey);
+}
+
+/**
+ * Sets and saves teams display configuration for a sheet
+ * @param {string} sheetKey
+ * @param {TeamsDisplayConfig} config
+ */
+export function setTeamsDisplayConfiguration(sheetKey, config) {
+  state.teamsDisplayConfigs.set(sheetKey, config);
+  saveTeamsDisplayConfig(sheetKey, config);
+  notify('teamsDisplayConfigs');
 }
 
 /**
@@ -461,6 +693,7 @@ function getColumnIndexFromMapping(headers, mapping, columnKey) {
  * @param {string[][]} data
  * @param {ColumnMapping} [mapping] - Optional mapping, auto-detects if not provided
  * @returns {Map<string, Player>}
+ * @deprecated Use parsePlayersWithColumnsConfig instead
  */
 function parsePlayersFromSheetWithMapping(headers, data, mapping) {
   const players = new Map();
@@ -516,11 +749,90 @@ function parsePlayersFromSheetWithMapping(headers, data, mapping) {
 }
 
 /**
+ * Parses players from sheet data using ColumnsConfiguration
+ * @param {string[]} headers
+ * @param {string[][]} data
+ * @param {ColumnsConfiguration} config
+ * @returns {Map<string, Player>}
+ */
+function parsePlayersWithColumnsConfig(headers, data, config) {
+  const players = new Map();
+  
+  // Get column indices from config
+  const orderedColumns = getOrderedColumns(config);
+  
+  // Find special columns
+  const nameColumn = orderedColumns.find(c => c.columnType === 'name');
+  const roleColumns = orderedColumns.filter(c => c.columnType === 'role'); // ALL role columns
+  const ratingColumn = orderedColumns.find(c => c.columnType === 'rating');
+  const heroesColumn = orderedColumns.find(c => c.columnType === 'heroes');
+  
+  const nicknameIdx = nameColumn ? headers.indexOf(nameColumn.sheetColumn) : -1;
+  const battleTagIdx = findColumnIndex(headers, HEADER_PATTERNS.battleTag);
+  const roleIndices = roleColumns.map(c => headers.indexOf(c.sheetColumn)).filter(idx => idx !== -1);
+  const ratingIdx = ratingColumn ? headers.indexOf(ratingColumn.sheetColumn) : -1;
+  const heroesIdx = heroesColumn ? headers.indexOf(heroesColumn.sheetColumn) : -1;
+  
+  if (nicknameIdx === -1 && battleTagIdx === -1) {
+    console.warn('[Store] Could not find nickname or battletag column in player sheet');
+    return players;
+  }
+  
+  for (const row of data) {
+    const nickname = nicknameIdx >= 0 ? row[nicknameIdx]?.trim() : '';
+    const battleTag = battleTagIdx >= 0 ? row[battleTagIdx]?.trim() : '';
+    
+    // Need at least one identifier
+    if (!nickname && !battleTag) continue;
+    
+    // Collect all roles from all role columns
+    const roles = [];
+    for (const roleIdx of roleIndices) {
+      const roleStr = row[roleIdx]?.trim();
+      const normalizedRole = normalizeRole(roleStr);
+      if (normalizedRole && !roles.includes(normalizedRole)) {
+        roles.push(normalizedRole);
+      }
+    }
+    
+    // Primary role is the first one, or 'dps' if none
+    const role = roles[0] || 'dps';
+    
+    const ratingStr = ratingIdx >= 0 ? row[ratingIdx]?.trim() : '0';
+    const rating = parseInt(ratingStr, 10) || 0;
+    
+    const heroes = heroesIdx >= 0 ? row[heroesIdx]?.trim() || '' : '';
+    
+    const player = {
+      nickname: nickname || battleTag,
+      battleTag,
+      role,
+      roles, // Array of all roles from all role columns
+      rating,
+      heroes,
+      rawRow: row
+    };
+    
+    // Store by nickname (primary key)
+    if (nickname) {
+      players.set(nickname.toLowerCase(), player);
+    }
+    
+    // Also store by battleTag for lookup (if different from nickname)
+    if (battleTag && battleTag.toLowerCase() !== nickname.toLowerCase()) {
+      players.set(battleTag.toLowerCase(), player);
+    }
+  }
+  
+  return players;
+}
+
+/**
  * Updates cached sheet data
  * @param {SheetData} data 
- * @param {ColumnMapping} [mapping] - Optional column mapping
+ * @param {ColumnMapping|ColumnsConfiguration} [mappingOrConfig] - Optional column mapping or config
  */
-export function updateSheetData(data, mapping) {
+export function updateSheetData(data, mappingOrConfig) {
   const key = getSheetKey(data.spreadsheetId, data.gid);
   const existing = state.sheets.get(key);
   
@@ -532,11 +844,27 @@ export function updateSheetData(data, mapping) {
   state.sheets.set(key, data);
   state.errors.delete(key);
   
-  // Get mapping from parameter, state, or storage
-  const effectiveMapping = mapping || getColumnMapping(key) || detectColumnMapping(data.headers);
+  // Try to use ColumnsConfiguration first
+  let columnsConfig = null;
   
-  // Parse players from the sheet data using mapping
-  state.parsedPlayers = parsePlayersFromSheetWithMapping(data.headers, data.data, effectiveMapping);
+  // Check if mappingOrConfig is a ColumnsConfiguration (has 'columns' array)
+  if (mappingOrConfig && 'columns' in mappingOrConfig) {
+    columnsConfig = mappingOrConfig;
+  } else {
+    // Try to load existing ColumnsConfiguration
+    columnsConfig = getColumnsConfiguration(key);
+  }
+  
+  if (columnsConfig && columnsConfig.columns && columnsConfig.columns.length > 0) {
+    // Use new system
+    state.parsedPlayers = parsePlayersWithColumnsConfig(data.headers, data.data, columnsConfig);
+  } else {
+    // Fall back to legacy system
+    const effectiveMapping = (mappingOrConfig && !('columns' in mappingOrConfig)) 
+      ? mappingOrConfig 
+      : (getColumnMapping(key) || detectColumnMapping(data.headers));
+    state.parsedPlayers = parsePlayersFromSheetWithMapping(data.headers, data.data, effectiveMapping);
+  }
   
   if (hasChanged) {
     notify('sheetData');
@@ -946,8 +1274,11 @@ export function getFilteredPlayers(teams) {
       if (isAssigned) continue;
     }
     
-    // Apply role filter
-    if (role !== null && player.role !== role) continue;
+    // Apply role filter - check if any of player's roles match
+    if (role !== null) {
+      const playerRoles = player.roles || [player.role];
+      if (!playerRoles.includes(role)) continue;
+    }
     
     result.push(player);
     addedPlayers.add(playerKey);
