@@ -37,3 +37,4 @@ NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 echo "$NEW_VERSION" > $VERSION_FILE
 echo "Version bumped: $VERSION -> $NEW_VERSION"
 
+

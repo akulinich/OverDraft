@@ -117,6 +117,7 @@ MANUAL_INSTRUCTIONS = {
 ║  services:                                                       ║
 ║    api:                                                          ║
 ║      image: ghcr.io/YOUR_GITHUB_USERNAME/overdraft-api:latest    ║
+║      user: "0:0"                                                 ║
 ║      expose:                                                     ║
 ║        - "8000"                                                  ║
 ║      env_file:                                                   ║
@@ -262,6 +263,21 @@ MANUAL_INSTRUCTIONS = {
 ║                                                                  ║
 ║  Wait 5-10 minutes for DNS propagation.                          ║
 ║  Check with: dig YOUR_DOMAIN                                     ║
+╚══════════════════════════════════════════════════════════════════╝
+""",
+    "fix_config_permissions": """
+╔══════════════════════════════════════════════════════════════════╗
+║  MANUAL FIX: Config Directory Permissions                        ║
+╠══════════════════════════════════════════════════════════════════╣
+║  SSH to your VPS and run:                                        ║
+║                                                                  ║
+║  cd ~/overdraft                                                  ║
+║  docker compose exec api mkdir -p /app/data/configs              ║
+║  docker compose exec api chmod 777 /app/data/configs             ║
+║                                                                  ║
+║  Verify:                                                         ║
+║  docker compose exec api touch /app/data/configs/test.txt        ║
+║  docker compose exec api rm /app/data/configs/test.txt           ║
 ╚══════════════════════════════════════════════════════════════════╝
 """,
 }
@@ -483,11 +499,26 @@ class VPSSetup:
         
         if self.file_exists("~/overdraft/docker-compose.yml"):
             current = self.read_file("~/overdraft/docker-compose.yml")
-            # Check if frontend volume is configured
-            needs_update = current and "/var/www/overdraft" not in current and self.config.domain
+            # Check required configurations
+            has_frontend = "/var/www/overdraft" in current if current else False
+            has_config_data = "config_data:/app/data/configs" in current if current else False
+            has_root_user = 'user: "0:0"' in current if current else False
+            
+            needs_frontend = self.config.domain and not has_frontend
+            needs_config_data = not has_config_data
+            needs_root_user = not has_root_user
+            needs_update = needs_frontend or needs_config_data or needs_root_user
             
             if needs_update:
-                if not self.prompt_update("docker-compose.yml", "missing frontend volume mount"):
+                reasons = []
+                if needs_config_data:
+                    reasons.append("config storage volume")
+                if needs_root_user:
+                    reasons.append("root user for permissions")
+                if needs_frontend:
+                    reasons.append("frontend volume mount")
+                reason = "missing: " + ", ".join(reasons)
+                if not self.prompt_update("docker-compose.yml", reason):
                     logger.info("  ⏭ Skipped update")
                     return True
             else:
@@ -502,6 +533,7 @@ class VPSSetup:
             content = f'''services:
   api:
     image: ghcr.io/{github_username}/overdraft-api:latest
+    user: "0:0"
     expose:
       - "8000"
     env_file:
@@ -533,6 +565,7 @@ volumes:
             content = f'''services:
   api:
     image: ghcr.io/{github_username}/overdraft-api:latest
+    user: "0:0"
     ports:
       - "8000:8000"
     env_file:
@@ -556,31 +589,66 @@ volumes:
         logger.info("  ✓ Created docker-compose.yml")
         return True
 
-    def step_create_env_file(self) -> bool:
-        """Create .env file."""
-        logger.info("→ Checking .env file...")
+    def _build_env_content(self) -> str:
+        """Build .env file content from current config."""
+        import json
         
-        if self.file_exists("~/overdraft/.env"):
-            # .env usually doesn't need updates unless user wants to change values
-            logger.info("  ✓ .env already exists")
-            return True
-        
-        logger.info("→ Creating .env file...")
-        
-        # Build CORS_ORIGINS as JSON array
         if self.config.cors_origins:
-            import json
             cors_value = json.dumps(self.config.cors_origins)
         else:
             cors_value = '["*"]'
         
-        content = f"""GOOGLE_API_KEY={self.config.google_api_key}
+        return f"""GOOGLE_API_KEY={self.config.google_api_key}
 CACHE_TTL={self.config.cache_ttl}
 CORS_ORIGINS={cors_value}
 RATE_LIMIT={self.config.rate_limit}
 CONFIG_STORAGE_PATH=/app/data/configs
 """
+
+    def step_create_env_file(self) -> bool:
+        """Create .env file."""
+        logger.info("→ Checking .env file...")
         
+        # Required variables that must be present
+        required_vars = [
+            "GOOGLE_API_KEY",
+            "CACHE_TTL", 
+            "CORS_ORIGINS",
+            "RATE_LIMIT",
+            "CONFIG_STORAGE_PATH",
+        ]
+        
+        if self.file_exists("~/overdraft/.env"):
+            current = self.read_file("~/overdraft/.env") or ""
+            
+            # Check for missing variables
+            missing_vars = [var for var in required_vars if var not in current]
+            
+            if missing_vars:
+                missing_str = ", ".join(missing_vars)
+                if not self.prompt_update(".env", f"missing: {missing_str}"):
+                    logger.info("  ⏭ Skipped update")
+                    return True
+                
+                # User agreed - recreate the file with all variables
+                content = self._build_env_content()
+                cmd = f"cat > ~/overdraft/.env << 'EOF'\n{content}EOF"
+                exit_code, _, _ = self.run_command(cmd)
+                
+                if exit_code == 0:
+                    logger.info(f"  ✓ Updated .env (added: {missing_str})")
+                else:
+                    logger.error("  ✗ Failed to update .env")
+                    print(MANUAL_INSTRUCTIONS["create_env"])
+                    return False
+                return True
+            else:
+                logger.info("  ✓ .env already exists and is up to date")
+                return True
+        
+        logger.info("→ Creating .env file...")
+        
+        content = self._build_env_content()
         cmd = f"cat > ~/overdraft/.env << 'EOF'\n{content}EOF"
         exit_code, _, _ = self.run_command(cmd)
         
@@ -839,6 +907,48 @@ api.{base_domain} {{
         
         return True
 
+    def step_fix_config_permissions(self) -> bool:
+        """Fix permissions on config storage directory inside container."""
+        logger.info("→ Checking config directory permissions...")
+        
+        # Check if container is running
+        exit_code, _, _ = self.run_command(
+            "cd ~/overdraft && docker compose ps --format json 2>/dev/null | grep -q api",
+            check=False
+        )
+        
+        if exit_code != 0:
+            logger.info("  ⏭ Container not running, skipping")
+            return True
+        
+        # Create directory and fix permissions
+        commands = [
+            "cd ~/overdraft && docker compose exec -T api mkdir -p /app/data/configs",
+            "cd ~/overdraft && docker compose exec -T api chmod 777 /app/data/configs",
+        ]
+        
+        for cmd in commands:
+            exit_code, _, stderr = self.run_command(cmd, check=False)
+            if exit_code != 0:
+                logger.warning(f"  ⚠ Command failed: {stderr}")
+                # Not fatal - directory might already exist with correct permissions
+        
+        # Verify write access
+        exit_code, _, _ = self.run_command(
+            "cd ~/overdraft && docker compose exec -T api touch /app/data/configs/.write_test && "
+            "docker compose exec -T api rm /app/data/configs/.write_test",
+            check=False
+        )
+        
+        if exit_code == 0:
+            logger.info("  ✓ Config directory is writable")
+        else:
+            logger.error("  ✗ Config directory is not writable")
+            print(MANUAL_INSTRUCTIONS["fix_config_permissions"])
+            return False
+        
+        return True
+
     def run_setup(self) -> bool:
         """Run the complete setup process."""
         print()
@@ -862,6 +972,7 @@ api.{base_domain} {{
                 ("GHCR Login", self.step_login_ghcr),
                 ("Pull and Start", self.step_pull_and_start),
                 ("Restart Containers", self.step_restart_containers),
+                ("Fix Config Permissions", self.step_fix_config_permissions),
             ]
             
             for i, (name, step_func) in enumerate(steps, 1):
