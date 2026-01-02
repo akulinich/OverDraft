@@ -19,7 +19,8 @@ router = APIRouter()
 settings = get_settings()
 
 # Config storage directory
-CONFIG_DIR = Path(os.environ.get("CONFIG_STORAGE_PATH", "data/configs"))
+# Default to /app/data/configs for Docker, can be overridden via env
+CONFIG_DIR = Path(os.environ.get("CONFIG_STORAGE_PATH", "/app/data/configs"))
 
 # TTL for shared configs (30 days)
 CONFIG_TTL_DAYS = 30
