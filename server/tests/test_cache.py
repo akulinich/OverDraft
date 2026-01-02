@@ -74,26 +74,33 @@ class TestSheetCache:
         
         assert etag1 != etag2
     
-    def test_expired_returns_none(self, cache):
-        """Expired entries should return None."""
+    def test_get_returns_entry_regardless_of_expiration(self, cache):
+        """
+        get() should return entry even if "expired".
+        
+        With background polling architecture, TTL is not checked on read.
+        Data freshness is maintained by the poller, not by TTL.
+        """
         data = {"spreadsheetId": "test", "gid": "0", "headers": [], "data": []}
         cache.set("test123", "0", data)
         
-        # Manually expire the entry
+        # Set expires_at to the past - but get() should still return data
         cache._cache[("test123", "0")].expires_at = time.time() - 1
         
         result = cache.get("test123", "0")
-        assert result is None
+        assert result is not None
+        assert result.data == data
     
-    def test_expired_entry_removed(self, cache):
-        """Getting expired entry should remove it from cache."""
+    def test_is_expired_method_still_works(self, cache):
+        """CacheEntry.is_expired() should still work for cleanup."""
         data = {"spreadsheetId": "test", "gid": "0", "headers": [], "data": []}
-        cache.set("test123", "0", data)
-        cache._cache[("test123", "0")].expires_at = time.time() - 1
+        entry = cache.set("test123", "0", data)
         
-        cache.get("test123", "0")
+        assert entry.is_expired() is False
         
-        assert ("test123", "0") not in cache._cache
+        # Manually expire
+        entry.expires_at = time.time() - 1
+        assert entry.is_expired() is True
     
     def test_cleanup_expired(self, cache):
         """cleanup_expired should remove all expired entries."""

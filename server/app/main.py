@@ -17,6 +17,7 @@ from app.api.sheets import router as sheets_router
 from app.api.config import router as config_router, cleanup_expired_configs
 from app.config import get_settings
 from app.services.cache import get_cache
+from app.services.google_sheets import get_poller
 from app.services.metrics import get_metrics
 
 settings = get_settings()
@@ -55,9 +56,20 @@ async def lifespan(app: FastAPI):
     
     cleanup_task = asyncio.create_task(periodic_cleanup())
     
+    # Start background poller
+    poller = get_poller()
+    cache = get_cache()
+    poller.set_cache(cache)
+    poller.start()
+    print("[Startup] Background poller started")
+    
     yield
     
-    # Shutdown: cancel cleanup task
+    # Shutdown: stop poller and cancel cleanup task
+    poller = get_poller()
+    await poller.stop()
+    print("[Shutdown] Background poller stopped")
+    
     if cleanup_task:
         cleanup_task.cancel()
         try:
@@ -119,11 +131,17 @@ async def get_stats():
     - Google API request counts
     - Cache hit/miss statistics
     - Per-spreadsheet request breakdown
+    - Background poller status
     """
     metrics = get_metrics()
     cache = get_cache()
+    poller = get_poller()
     
     return {
         **metrics.to_dict(),
-        "cache_size": cache.size()
+        "cache_size": cache.size(),
+        "poller": {
+            "subscriptions": poller.subscription_count,
+            "is_active": poller.is_active
+        }
     }

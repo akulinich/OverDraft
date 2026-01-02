@@ -14,6 +14,7 @@ import { parseCSV } from '../utils/csv.js';
  * @property {string[][]} data - 2D array of cell values
  * @property {string[]} headers - Column headers
  * @property {Date} lastUpdated
+ * @property {boolean} [pending] - True if data is still being fetched (HTTP 202)
  */
 
 /**
@@ -113,6 +114,23 @@ export async function fetchSheet(spreadsheetId, gid) {
     }
     // This shouldn't happen, but handle it gracefully
     throw new SheetError('PARSE_ERROR', 'Received 304 but no cached data', spreadsheetId, gid);
+  }
+  
+  // Handle 202 Accepted - data is being fetched, return pending marker
+  if (response.status === 202) {
+    if (config.isDev) {
+      console.log('[Sheets] Data pending (202), will retry');
+    }
+    // Return special object indicating data is pending
+    // Caller should retry after a short delay
+    return {
+      pending: true,
+      spreadsheetId,
+      gid,
+      headers: [],
+      data: [],
+      lastUpdated: new Date()
+    };
   }
   
   // Handle errors

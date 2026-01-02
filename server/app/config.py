@@ -27,10 +27,6 @@ class Settings(BaseSettings):
     # Rate limiting (per IP per spreadsheet)
     rate_limit: str = "90/minute"
     
-    # Google API rate limiting (outgoing requests to Google)
-    # Format: "requests/minute" e.g., "60/minute"
-    google_rate_limit: str = "60/minute"
-    
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

@@ -3,18 +3,22 @@ Sheets API endpoint.
 Provides cached access to Google Sheets data with ETag support.
 Returns CSV format for compatibility with existing client code.
 
-Optimization: Fetches only specific sheets, not entire document.
+Architecture:
+- Client requests never trigger Google API calls
+- If no cached data, returns HTTP 202 "pending"
+- Background poller fetches data every second
 """
 
 import re
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from slowapi import Limiter
 
 from app.config import get_settings
 from app.services.cache import get_cache
-from app.services.google_sheets import GoogleSheetsError, get_sheets_client
+from app.services.google_sheets import get_poller
 from app.services.metrics import get_metrics
 
 
@@ -96,7 +100,8 @@ async def get_sheet(
     """
     Fetch sheet data with caching and ETag support.
     
-    Optimization: Fetches only the specific sheet, not the entire document.
+    This endpoint NEVER calls Google API directly.
+    Data is fetched by background poller.
     
     Query Parameters:
         spreadsheetId: Google Sheets document ID
@@ -107,20 +112,22 @@ async def get_sheet(
         
     Returns:
         200: Sheet data as CSV with ETag header
+        202: Data is being fetched (client should retry)
         304: Not Modified (data unchanged, empty body)
         400: Invalid parameters
-        404: Sheet not found
         429: Rate limit exceeded
-        502: Google API error
     """
     validate_spreadsheet_id(spreadsheet_id)
     validate_gid(gid)
     
     cache = get_cache()
-    client = get_sheets_client()
+    poller = get_poller()
     metrics = get_metrics()
     
-    # Check cache first
+    # Subscribe to background polling
+    poller.subscribe(spreadsheet_id, gid)
+    
+    # Check cache
     cached = cache.get(spreadsheet_id, gid)
     
     if cached is not None:
@@ -145,41 +152,14 @@ async def get_sheet(
             }
         )
     
-    # Cache miss - fetch specific sheet from Google
+    # No cached data - return 202 Accepted
+    # Background poller will fetch the data
     metrics.record_cache_miss()
     
-    try:
-        sheet_data = await client.fetch_sheet(spreadsheet_id, gid)
-        metrics.record_google_request(spreadsheet_id)
-    except GoogleSheetsError as e:
-        metrics.record_error()
-        if e.error_type == "NOT_FOUND":
-            raise HTTPException(status_code=404, detail=str(e))
-        if e.error_type == "NOT_PUBLISHED":
-            raise HTTPException(status_code=403, detail=str(e))
-        if e.error_type == "CONFIG_ERROR":
-            raise HTTPException(status_code=500, detail=str(e))
-        if e.error_type == "RATE_LIMITED":
-            raise HTTPException(status_code=502, detail=str(e))
-        raise HTTPException(status_code=502, detail=str(e))
-    
-    # Store in cache
-    entry = cache.set(spreadsheet_id, gid, sheet_data)
-    
-    # Check if client already has this data
-    if if_none_match and if_none_match == entry.etag:
-        return Response(status_code=304, headers={
-            "ETag": entry.etag,
-            "Cache-Control": "no-cache"
-        })
-    
-    # Return as CSV
-    csv_content = to_csv(sheet_data.get("headers", []), sheet_data.get("data", []))
-    return Response(
-        content=csv_content,
-        media_type="text/csv; charset=utf-8",
-        headers={
-            "ETag": entry.etag,
-            "Cache-Control": "no-cache"
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "pending",
+            "message": "Data is being fetched. Please retry in 1 second."
         }
     )

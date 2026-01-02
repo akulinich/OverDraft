@@ -50,26 +50,20 @@ class SheetCache:
     
     def get(self, spreadsheet_id: str, gid: str) -> CacheEntry | None:
         """
-        Get cached sheet if exists and not expired.
+        Get cached sheet if exists.
+        
+        Note: With background polling architecture, we don't check TTL.
+        Data is kept fresh by the background poller updating it every second.
         
         Args:
             spreadsheet_id: Google Sheets document ID
             gid: Sheet tab ID
             
         Returns:
-            CacheEntry if valid cache exists, None otherwise
+            CacheEntry if exists, None otherwise
         """
         key = (spreadsheet_id, gid)
-        entry = self._cache.get(key)
-        
-        if entry is None:
-            return None
-        
-        if entry.is_expired():
-            del self._cache[key]
-            return None
-        
-        return entry
+        return self._cache.get(key)
     
     def set(self, spreadsheet_id: str, gid: str, data: dict[str, Any]) -> CacheEntry:
         """

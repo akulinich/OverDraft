@@ -1,17 +1,22 @@
 """
-Google Sheets API client.
-Fetches only specific sheets instead of entire document.
-Includes request coalescing to prevent duplicate API calls.
-Rate limited to 60 requests per minute to Google API.
+Google Sheets API client with background polling.
+
+Architecture:
+- BackgroundPoller runs every 1 second (when users are active)
+- Client requests never trigger Google API calls
+- If no cached data, API returns 202 "pending"
+- Poller fetches all subscribed sheets in one request per document
 """
 
 import asyncio
+import logging
 import time
 import httpx
-from collections import deque
 from typing import Any
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleSheetsError(Exception):
@@ -24,62 +29,12 @@ class GoogleSheetsError(Exception):
         self.gid = gid
 
 
-class RateLimiter:
-    """
-    Sliding window rate limiter for Google API requests.
-    
-    Limits requests to max_requests per window_seconds.
-    If limit is exceeded, waits until a slot becomes available.
-    """
-    
-    def __init__(self, max_requests: int = 60, window_seconds: float = 60.0):
-        self.max_requests = max_requests
-        self.window_seconds = window_seconds
-        self._timestamps: deque[float] = deque()
-        self._lock = asyncio.Lock()
-    
-    async def acquire(self) -> None:
-        """
-        Acquire a rate limit slot. Waits if limit is exceeded.
-        """
-        async with self._lock:
-            now = time.time()
-            
-            # Remove timestamps outside the window
-            while self._timestamps and now - self._timestamps[0] > self.window_seconds:
-                self._timestamps.popleft()
-            
-            # If at limit, wait until oldest request expires
-            if len(self._timestamps) >= self.max_requests:
-                wait_time = self._timestamps[0] + self.window_seconds - now
-                if wait_time > 0:
-                    await asyncio.sleep(wait_time)
-                    # Clean up again after waiting
-                    now = time.time()
-                    while self._timestamps and now - self._timestamps[0] > self.window_seconds:
-                        self._timestamps.popleft()
-            
-            # Record this request
-            self._timestamps.append(time.time())
-    
-    @property
-    def current_count(self) -> int:
-        """Get current number of requests in the window."""
-        now = time.time()
-        while self._timestamps and now - self._timestamps[0] > self.window_seconds:
-            self._timestamps.popleft()
-        return len(self._timestamps)
-
-
 class GoogleSheetsClient:
     """
     Client for fetching data from Google Sheets API.
     
-    Strategy:
-    1. Fetch metadata (gid→name mapping) once, cache it longer
-    2. Fetch only specific sheet data using ranges parameter
-    3. Request coalescing per (spreadsheet_id, gid) pair
-    4. Rate limiting: configurable via GOOGLE_RATE_LIMIT env var
+    Simplified version - no rate limiting or request coalescing.
+    All calls are made by BackgroundPoller, not by client requests.
     """
     
     BASE_URL = "https://sheets.googleapis.com/v4/spreadsheets"
@@ -88,39 +43,8 @@ class GoogleSheetsClient:
     def __init__(self):
         self.settings = get_settings()
         self._client: httpx.AsyncClient | None = None
-        # Track in-flight requests for coalescing: key = (spreadsheet_id, gid)
-        self._pending_requests: dict[tuple[str, str], asyncio.Task] = {}
         # Cache for metadata (gid → sheet name): key = spreadsheet_id
         self._metadata_cache: dict[str, tuple[dict[str, str], float]] = {}
-        # Parse rate limit from config (format: "60/minute")
-        max_requests, window_seconds = self._parse_rate_limit(self.settings.google_rate_limit)
-        self._rate_limit_requests = max_requests
-        self._rate_limit_window = window_seconds
-        # Rate limiter for Google API requests
-        self._rate_limiter = RateLimiter(max_requests, window_seconds)
-    
-    @staticmethod
-    def _parse_rate_limit(rate_limit: str) -> tuple[int, float]:
-        """
-        Parse rate limit string like "60/minute" into (count, seconds).
-        
-        Supports: /second, /minute, /hour
-        """
-        try:
-            count_str, period = rate_limit.split("/")
-            count = int(count_str)
-            
-            period_seconds = {
-                "second": 1.0,
-                "minute": 60.0,
-                "hour": 3600.0,
-            }
-            
-            seconds = period_seconds.get(period.lower(), 60.0)
-            return count, seconds
-        except (ValueError, AttributeError):
-            # Default to 60/minute
-            return 60, 60.0
     
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
@@ -148,123 +72,30 @@ class GoogleSheetsClient:
         expires_at = time.time() + self.METADATA_TTL
         self._metadata_cache[spreadsheet_id] = (mapping, expires_at)
     
-    async def fetch_sheet(self, spreadsheet_id: str, gid: str) -> dict[str, Any]:
+    async def fetch_metadata(self, spreadsheet_id: str) -> dict[str, str]:
         """
-        Fetch a specific sheet by gid.
-        
-        Uses two-step process:
-        1. Get metadata (cached) to find sheet name
-        2. Fetch only that sheet's data using ranges parameter
+        Fetch spreadsheet metadata (gid → sheet name mapping).
         
         Args:
             spreadsheet_id: Google Sheets document ID
-            gid: Sheet tab ID
             
         Returns:
-            dict with headers and data arrays
+            Dict mapping gid to sheet name
             
         Raises:
-            GoogleSheetsError: On API errors or if sheet not found
+            GoogleSheetsError: On API errors
         """
         if not self.settings.google_api_key:
             raise GoogleSheetsError(
                 "CONFIG_ERROR",
                 "Google API key not configured",
-                spreadsheet_id,
-                gid
+                spreadsheet_id
             )
         
-        key = (spreadsheet_id, gid)
-        
-        # Check if request is already in-flight (coalescing)
-        if key in self._pending_requests:
-            return await self._pending_requests[key]
-        
-        # Create new request task
-        task = asyncio.create_task(self._do_fetch_sheet(spreadsheet_id, gid))
-        self._pending_requests[key] = task
-        
-        try:
-            return await task
-        finally:
-            self._pending_requests.pop(key, None)
-    
-    async def _do_fetch_sheet(self, spreadsheet_id: str, gid: str) -> dict[str, Any]:
-        """
-        Actually fetch a specific sheet.
-        
-        Args:
-            spreadsheet_id: Google Sheets document ID
-            gid: Sheet tab ID
-            
-        Returns:
-            Sheet data with headers and rows
-        """
-        # Step 1: Get sheet name from metadata (may use cache)
-        sheet_name = await self._get_sheet_name(spreadsheet_id, gid)
-        
-        if sheet_name is None:
-            raise GoogleSheetsError(
-                "NOT_FOUND",
-                f"Sheet with gid={gid} not found",
-                spreadsheet_id,
-                gid
-            )
-        
-        # Step 2: Fetch only this sheet's data (rate limited)
-        await self._rate_limiter.acquire()
-        
-        client = await self._get_client()
-        
-        # Use ranges parameter to fetch only specific sheet
-        url = f"{self.BASE_URL}/{spreadsheet_id}"
-        params = {
-            "key": self.settings.google_api_key,
-            "includeGridData": "true",
-            "ranges": sheet_name  # Fetch only this sheet
-        }
-        
-        try:
-            response = await client.get(url, params=params)
-        except httpx.RequestError as e:
-            raise GoogleSheetsError(
-                "NETWORK",
-                f"Network error: {e}",
-                spreadsheet_id,
-                gid
-            )
-        
-        if response.status_code == 404:
-            raise GoogleSheetsError("NOT_FOUND", "Spreadsheet not found", spreadsheet_id, gid)
-        if response.status_code == 403:
-            raise GoogleSheetsError("NOT_PUBLISHED", "Spreadsheet is not public", spreadsheet_id, gid)
-        if response.status_code == 429:
-            raise GoogleSheetsError("RATE_LIMITED", "Google API rate limit exceeded", spreadsheet_id, gid)
-        if not response.is_success:
-            raise GoogleSheetsError("API_ERROR", f"Google API error: {response.status_code}", spreadsheet_id, gid)
-        
-        raw_data = response.json()
-        return self._parse_single_sheet(spreadsheet_id, gid, sheet_name, raw_data)
-    
-    async def _get_sheet_name(self, spreadsheet_id: str, gid: str) -> str | None:
-        """
-        Get sheet name for a given gid.
-        Uses cached metadata when available.
-        
-        Args:
-            spreadsheet_id: Spreadsheet ID
-            gid: Sheet ID
-            
-        Returns:
-            Sheet name or None if not found
-        """
         # Check cache first
         cached = self._get_cached_metadata(spreadsheet_id)
         if cached is not None:
-            return cached.get(gid)
-        
-        # Fetch metadata (without grid data - fast!) - rate limited
-        await self._rate_limiter.acquire()
+            return cached
         
         client = await self._get_client()
         
@@ -277,16 +108,16 @@ class GoogleSheetsClient:
         try:
             response = await client.get(url, params=params)
         except httpx.RequestError as e:
-            raise GoogleSheetsError("NETWORK", f"Network error: {e}", spreadsheet_id, gid)
+            raise GoogleSheetsError("NETWORK", f"Network error: {e}", spreadsheet_id)
         
         if response.status_code == 404:
-            raise GoogleSheetsError("NOT_FOUND", "Spreadsheet not found", spreadsheet_id, gid)
+            raise GoogleSheetsError("NOT_FOUND", "Spreadsheet not found", spreadsheet_id)
         if response.status_code == 403:
-            raise GoogleSheetsError("NOT_PUBLISHED", "Spreadsheet is not public", spreadsheet_id, gid)
+            raise GoogleSheetsError("NOT_PUBLISHED", "Spreadsheet is not public", spreadsheet_id)
         if response.status_code == 429:
-            raise GoogleSheetsError("RATE_LIMITED", "Google API rate limit exceeded", spreadsheet_id, gid)
+            raise GoogleSheetsError("RATE_LIMITED", "Google API rate limit exceeded", spreadsheet_id)
         if not response.is_success:
-            raise GoogleSheetsError("API_ERROR", f"Google API error: {response.status_code}", spreadsheet_id, gid)
+            raise GoogleSheetsError("API_ERROR", f"Google API error: {response.status_code}", spreadsheet_id)
         
         raw_data = response.json()
         
@@ -300,86 +131,139 @@ class GoogleSheetsClient:
         
         self._cache_metadata(spreadsheet_id, mapping)
         
-        return mapping.get(gid)
+        return mapping
     
-    def _parse_single_sheet(
+    async def fetch_multiple_sheets(
         self, 
         spreadsheet_id: str, 
-        gid: str, 
-        title: str, 
-        raw_data: dict[str, Any]
-    ) -> dict[str, Any]:
+        gids: set[str]
+    ) -> dict[str, dict[str, Any]]:
         """
-        Parse response for a single sheet.
+        Fetch multiple sheets in one API request.
         
         Args:
-            spreadsheet_id: Spreadsheet ID
-            gid: Sheet ID
-            title: Sheet title
-            raw_data: Raw API response
+            spreadsheet_id: Google Sheets document ID
+            gids: Set of sheet gids to fetch
             
         Returns:
-            Parsed sheet data
+            Dict mapping gid to sheet data
+            
+        Raises:
+            GoogleSheetsError: On API errors
         """
-        sheets = raw_data.get("sheets", [])
-        if not sheets:
-            return {
+        if not self.settings.google_api_key:
+            raise GoogleSheetsError(
+                "CONFIG_ERROR",
+                "Google API key not configured",
+                spreadsheet_id
+            )
+        
+        if not gids:
+            return {}
+        
+        # Get sheet names from metadata
+        metadata = await self.fetch_metadata(spreadsheet_id)
+        
+        # Build ranges parameter with sheet names
+        sheet_names = []
+        gid_to_name: dict[str, str] = {}
+        for gid in gids:
+            name = metadata.get(gid)
+            if name:
+                sheet_names.append(name)
+                gid_to_name[gid] = name
+        
+        if not sheet_names:
+            return {}
+        
+        client = await self._get_client()
+        
+        # Fetch all sheets in one request using multiple ranges
+        url = f"{self.BASE_URL}/{spreadsheet_id}"
+        params = [
+            ("key", self.settings.google_api_key),
+            ("includeGridData", "true"),
+        ]
+        # Add each sheet name as a separate ranges parameter
+        for name in sheet_names:
+            params.append(("ranges", name))
+        
+        try:
+            response = await client.get(url, params=params)
+        except httpx.RequestError as e:
+            raise GoogleSheetsError("NETWORK", f"Network error: {e}", spreadsheet_id)
+        
+        if response.status_code == 404:
+            raise GoogleSheetsError("NOT_FOUND", "Spreadsheet not found", spreadsheet_id)
+        if response.status_code == 403:
+            raise GoogleSheetsError("NOT_PUBLISHED", "Spreadsheet is not public", spreadsheet_id)
+        if response.status_code == 429:
+            raise GoogleSheetsError("RATE_LIMITED", "Google API rate limit exceeded", spreadsheet_id)
+        if not response.is_success:
+            raise GoogleSheetsError("API_ERROR", f"Google API error: {response.status_code}", spreadsheet_id)
+        
+        raw_data = response.json()
+        
+        # Parse response and build result dict
+        result: dict[str, dict[str, Any]] = {}
+        
+        for sheet in raw_data.get("sheets", []):
+            props = sheet.get("properties", {})
+            sheet_gid = str(props.get("sheetId", 0))
+            title = props.get("title", "Sheet")
+            
+            if sheet_gid not in gids:
+                continue
+            
+            grid_data = sheet.get("data", [])
+            
+            if not grid_data:
+                result[sheet_gid] = {
+                    "spreadsheetId": spreadsheet_id,
+                    "gid": sheet_gid,
+                    "title": title,
+                    "headers": [],
+                    "data": []
+                }
+                continue
+            
+            row_data = grid_data[0].get("rowData", [])
+            rows = self._extract_rows(row_data)
+            
+            if not rows:
+                result[sheet_gid] = {
+                    "spreadsheetId": spreadsheet_id,
+                    "gid": sheet_gid,
+                    "title": title,
+                    "headers": [],
+                    "data": []
+                }
+                continue
+            
+            # First row is headers, rest is data
+            headers = rows[0]
+            data_rows = rows[1:] if len(rows) > 1 else []
+            
+            # Normalize row lengths
+            max_cols = max(len(headers), max((len(r) for r in data_rows), default=0))
+            
+            def normalize_row(row: list) -> list:
+                if len(row) < max_cols:
+                    return row + [""] * (max_cols - len(row))
+                return row
+            
+            result[sheet_gid] = {
                 "spreadsheetId": spreadsheet_id,
-                "gid": gid,
+                "gid": sheet_gid,
                 "title": title,
-                "headers": [],
-                "data": []
+                "headers": normalize_row(headers),
+                "data": [normalize_row(row) for row in data_rows]
             }
         
-        # Should only have one sheet in response (the one we requested)
-        sheet = sheets[0]
-        grid_data = sheet.get("data", [])
-        
-        if not grid_data:
-            return {
-                "spreadsheetId": spreadsheet_id,
-                "gid": gid,
-                "title": title,
-                "headers": [],
-                "data": []
-            }
-        
-        row_data = grid_data[0].get("rowData", [])
-        rows = self._extract_rows(row_data)
-        
-        if not rows:
-            return {
-                "spreadsheetId": spreadsheet_id,
-                "gid": gid,
-                "title": title,
-                "headers": [],
-                "data": []
-            }
-        
-        # First row is headers, rest is data
-        headers = rows[0]
-        data_rows = rows[1:] if len(rows) > 1 else []
-        
-        # Normalize row lengths
-        max_cols = max(len(headers), max((len(r) for r in data_rows), default=0))
-        
-        def normalize_row(row: list) -> list:
-            if len(row) < max_cols:
-                return row + [""] * (max_cols - len(row))
-            return row
-        
-        return {
-            "spreadsheetId": spreadsheet_id,
-            "gid": gid,
-            "title": title,
-            "headers": normalize_row(headers),
-            "data": [normalize_row(row) for row in data_rows]
-        }
+        return result
     
     def _extract_rows(self, row_data: list[dict]) -> list[list[str]]:
-        """
-        Extract cell values from rowData structure.
-        """
+        """Extract cell values from rowData structure."""
         rows = []
         for row in row_data:
             cells = row.get("values", [])
@@ -389,57 +273,130 @@ class GoogleSheetsClient:
                 row_values.append(value if value is not None else "")
             rows.append(row_values)
         return rows
+
+
+class BackgroundPoller:
+    """
+    Background task that polls Google Sheets every second.
     
-    # Keep for backwards compatibility with cache
-    def get_sheet_from_spreadsheet(
-        self, 
-        spreadsheet_data: dict[str, Any], 
-        gid: str
-    ) -> dict[str, Any] | None:
-        """Extract a specific sheet from spreadsheet data (for cache compatibility)."""
-        sheets = spreadsheet_data.get("sheets", {})
-        sheet = sheets.get(gid)
-        if sheet is None:
-            return None
-        return {
-            "spreadsheetId": spreadsheet_data.get("spreadsheetId"),
-            "gid": gid,
-            "title": sheet.get("title"),
-            "headers": sheet.get("headers", []),
-            "data": sheet.get("data", [])
-        }
+    Features:
+    - Only polls when there are active users (activity in last 60 seconds)
+    - Groups sheets by spreadsheet_id for efficient fetching
+    - One API request per spreadsheet (fetches all subscribed sheets)
+    """
     
-    # Legacy method - now redirects to fetch_sheet
-    async def fetch_spreadsheet(self, spreadsheet_id: str) -> dict[str, Any]:
+    POLL_INTERVAL = 1.0  # seconds
+    INACTIVITY_TIMEOUT = 60.0  # seconds
+    
+    def __init__(self, sheets_client: GoogleSheetsClient):
+        self._client = sheets_client
+        self._cache = None  # Set via set_cache()
+        self._subscriptions: dict[str, set[str]] = {}  # spreadsheet_id -> {gid1, gid2}
+        self._last_activity: float = 0
+        self._task: asyncio.Task | None = None
+        self._running = False
+    
+    def set_cache(self, cache):
+        """Set the cache instance (avoids circular import)."""
+        self._cache = cache
+    
+    def subscribe(self, spreadsheet_id: str, gid: str):
         """
-        Fetch spreadsheet metadata only (for backwards compatibility).
+        Subscribe a sheet for background polling.
+        Also updates last activity time.
         
-        Note: This no longer fetches all data. Use fetch_sheet() for specific sheets.
+        Args:
+            spreadsheet_id: Google Sheets document ID
+            gid: Sheet tab ID
         """
-        # Just return metadata structure, actual sheet data should use fetch_sheet
-        cached = self._get_cached_metadata(spreadsheet_id)
-        if cached is None:
-            # Trigger metadata fetch by requesting any sheet
-            await self._get_sheet_name(spreadsheet_id, "0")
-            cached = self._get_cached_metadata(spreadsheet_id) or {}
+        if spreadsheet_id not in self._subscriptions:
+            self._subscriptions[spreadsheet_id] = set()
+        self._subscriptions[spreadsheet_id].add(gid)
+        self._last_activity = time.time()
         
-        return {
-            "spreadsheetId": spreadsheet_id,
-            "sheets": {gid: {"title": name, "headers": [], "data": []} for gid, name in cached.items()}
-        }
+        logger.debug(f"Subscribed sheet {spreadsheet_id}:{gid}")
+    
+    def touch(self):
+        """Update last activity time without subscribing."""
+        self._last_activity = time.time()
+    
+    def start(self):
+        """Start the background polling loop."""
+        if self._running:
+            return
+        
+        self._running = True
+        self._task = asyncio.create_task(self._poll_loop())
+        logger.info("Background poller started")
+    
+    async def stop(self):
+        """Stop the background polling loop."""
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        logger.info("Background poller stopped")
+    
+    async def _poll_loop(self):
+        """Main polling loop - runs every POLL_INTERVAL seconds."""
+        while self._running:
+            try:
+                await asyncio.sleep(self.POLL_INTERVAL)
+                
+                # Check if there's been recent activity
+                if not self._has_active_users():
+                    continue
+                
+                # Poll all subscribed spreadsheets
+                await self._poll_all()
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Polling error: {e}")
+    
+    def _has_active_users(self) -> bool:
+        """Check if there was activity within the timeout period."""
+        return time.time() - self._last_activity < self.INACTIVITY_TIMEOUT
+    
+    async def _poll_all(self):
+        """Poll all subscribed spreadsheets."""
+        if not self._subscriptions or not self._cache:
+            return
+        
+        for spreadsheet_id, gids in self._subscriptions.items():
+            if not gids:
+                continue
+            
+            try:
+                sheets_data = await self._client.fetch_multiple_sheets(spreadsheet_id, gids)
+                
+                # Update cache for each sheet
+                for gid, data in sheets_data.items():
+                    self._cache.set(spreadsheet_id, gid, data)
+                    
+            except GoogleSheetsError as e:
+                logger.warning(f"Failed to fetch {spreadsheet_id}: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error polling {spreadsheet_id}: {e}")
     
     @property
-    def rate_limit_status(self) -> dict[str, Any]:
-        """Get current rate limit status for monitoring."""
-        return {
-            "current_requests": self._rate_limiter.current_count,
-            "max_requests": self.RATE_LIMIT_REQUESTS,
-            "window_seconds": self.RATE_LIMIT_WINDOW
-        }
+    def subscription_count(self) -> int:
+        """Get total number of subscribed sheets."""
+        return sum(len(gids) for gids in self._subscriptions.values())
+    
+    @property
+    def is_active(self) -> bool:
+        """Check if poller is actively polling (has active users)."""
+        return self._running and self._has_active_users()
 
 
-# Singleton instance
+# Singleton instances
 _client: GoogleSheetsClient | None = None
+_poller: BackgroundPoller | None = None
 
 
 def get_sheets_client() -> GoogleSheetsClient:
@@ -448,3 +405,13 @@ def get_sheets_client() -> GoogleSheetsClient:
     if _client is None:
         _client = GoogleSheetsClient()
     return _client
+
+
+def get_poller() -> BackgroundPoller:
+    """Get singleton background poller."""
+    global _poller, _client
+    if _poller is None:
+        if _client is None:
+            _client = GoogleSheetsClient()
+        _poller = BackgroundPoller(_client)
+    return _poller

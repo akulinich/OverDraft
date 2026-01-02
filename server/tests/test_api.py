@@ -114,25 +114,61 @@ def test_sheets_invalid_gid():
     assert response.status_code == 400
 
 
-@patch("app.api.sheets.get_sheets_client")
-def test_sheets_success(mock_client):
-    """Valid request with mocked Google client returns CSV."""
-    from unittest.mock import MagicMock
-    mock_instance = MagicMock()
-    
-    # Mock the async fetch_sheet method (new API)
-    async def mock_fetch_sheet(spreadsheet_id, gid):
-        return {
-            "spreadsheetId": spreadsheet_id,
-            "gid": gid,
-            "title": "Sheet1",
-            "headers": ["Name"],
-            "data": [["Alice"]]
-        }
-    mock_instance.fetch_sheet = mock_fetch_sheet
-    mock_client.return_value = mock_instance
+def test_sheets_pending_when_no_cache():
+    """Request with no cached data returns 202 pending."""
+    # Clear any cached data
+    from app.services.cache import get_cache
+    get_cache().clear()
     
     response = client.get("/api/sheets?spreadsheetId=1234567890abcdef&gid=0")
+    
+    # With the new architecture, cache miss returns 202
+    assert response.status_code == 202
+    data = response.json()
+    assert data["status"] == "pending"
+
+
+def test_sheets_success_with_cache():
+    """Request with cached data returns CSV."""
+    from app.services.cache import get_cache
+    
+    # Pre-populate cache
+    cache = get_cache()
+    cache.set("1234567890abcdef", "0", {
+        "spreadsheetId": "1234567890abcdef",
+        "gid": "0",
+        "title": "Sheet1",
+        "headers": ["Name"],
+        "data": [["Alice"]]
+    })
+    
+    response = client.get("/api/sheets?spreadsheetId=1234567890abcdef&gid=0")
+    
     assert response.status_code == 200
     assert "text/csv" in response.headers["content-type"]
+    assert "Name" in response.text
+    assert "Alice" in response.text
+
+
+def test_sheets_304_not_modified():
+    """Request with matching ETag returns 304."""
+    from app.services.cache import get_cache
+    
+    # Pre-populate cache
+    cache = get_cache()
+    entry = cache.set("1234567890abcdef", "1", {
+        "spreadsheetId": "1234567890abcdef",
+        "gid": "1",
+        "title": "Sheet1",
+        "headers": ["Name"],
+        "data": [["Bob"]]
+    })
+    
+    # Request with matching ETag
+    response = client.get(
+        "/api/sheets?spreadsheetId=1234567890abcdef&gid=1",
+        headers={"If-None-Match": entry.etag}
+    )
+    
+    assert response.status_code == 304
 
