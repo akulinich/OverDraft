@@ -120,24 +120,16 @@ def test_sheets_success(mock_client):
     from unittest.mock import MagicMock
     mock_instance = MagicMock()
     
-    # Mock the async fetch_spreadsheet method
-    async def mock_fetch_spreadsheet(spreadsheet_id):
+    # Mock the async fetch_sheet method (new API)
+    async def mock_fetch_sheet(spreadsheet_id, gid):
         return {
             "spreadsheetId": spreadsheet_id,
-            "sheets": {
-                "0": {"title": "Sheet1", "headers": ["Name"], "data": [["Alice"]]}
-            }
+            "gid": gid,
+            "title": "Sheet1",
+            "headers": ["Name"],
+            "data": [["Alice"]]
         }
-    mock_instance.fetch_spreadsheet = mock_fetch_spreadsheet
-    
-    # Mock get_sheet_from_spreadsheet (sync method)
-    mock_instance.get_sheet_from_spreadsheet.return_value = {
-        "spreadsheetId": "1234567890abcdef",
-        "gid": "0",
-        "title": "Sheet1",
-        "headers": ["Name"],
-        "data": [["Alice"]]
-    }
+    mock_instance.fetch_sheet = mock_fetch_sheet
     mock_client.return_value = mock_instance
     
     response = client.get("/api/sheets?spreadsheetId=1234567890abcdef&gid=0")

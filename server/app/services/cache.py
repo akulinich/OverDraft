@@ -1,6 +1,6 @@
 """
 In-memory cache with TTL and ETag support.
-Caches entire spreadsheets by spreadsheet_id for efficient multi-sheet access.
+Caches individual sheets by (spreadsheet_id, gid) for efficient access.
 """
 
 import hashlib
@@ -24,27 +24,16 @@ class CacheEntry:
         return time.time() > self.expires_at
 
 
-@dataclass
-class SheetCacheEntry:
-    """Cache entry for a specific sheet with its own ETag."""
-    headers: list[str]
-    data: list[list[str]]
-    etag: str
-
-
-class SpreadsheetCache:
+class SheetCache:
     """
-    In-memory cache for spreadsheet data.
+    In-memory cache for sheet data.
     
-    Key: spreadsheet_id (string)
-    Value: CacheEntry containing all sheets data
-    
-    This allows fetching entire spreadsheet once and serving
-    multiple sheet requests from cache.
+    Key: (spreadsheet_id, gid) tuple
+    Value: CacheEntry containing sheet data
     """
     
     def __init__(self):
-        self._cache: dict[str, CacheEntry] = {}
+        self._cache: dict[tuple[str, str], CacheEntry] = {}
         self._settings = get_settings()
     
     @staticmethod
@@ -59,76 +48,49 @@ class SpreadsheetCache:
         hash_value = hashlib.sha256(json_str.encode()).hexdigest()[:16]
         return f'"{hash_value}"'
     
-    def get_spreadsheet(self, spreadsheet_id: str) -> CacheEntry | None:
+    def get(self, spreadsheet_id: str, gid: str) -> CacheEntry | None:
         """
-        Get cached spreadsheet if exists and not expired.
-        
-        Args:
-            spreadsheet_id: Google Sheets document ID
-            
-        Returns:
-            CacheEntry if valid cache exists, None otherwise
-        """
-        entry = self._cache.get(spreadsheet_id)
-        
-        if entry is None:
-            return None
-        
-        if entry.is_expired():
-            del self._cache[spreadsheet_id]
-            return None
-        
-        return entry
-    
-    def set_spreadsheet(self, spreadsheet_id: str, data: dict[str, Any]) -> CacheEntry:
-        """
-        Store spreadsheet data in cache.
-        
-        Args:
-            spreadsheet_id: Google Sheets document ID
-            data: Full spreadsheet data including all sheets
-            
-        Returns:
-            Created CacheEntry
-        """
-        etag = self.compute_etag(data)
-        expires_at = time.time() + self._settings.cache_ttl
-        
-        entry = CacheEntry(data=data, etag=etag, expires_at=expires_at)
-        self._cache[spreadsheet_id] = entry
-        
-        return entry
-    
-    def get_sheet(self, spreadsheet_id: str, gid: str) -> SheetCacheEntry | None:
-        """
-        Get a specific sheet from cached spreadsheet.
+        Get cached sheet if exists and not expired.
         
         Args:
             spreadsheet_id: Google Sheets document ID
             gid: Sheet tab ID
             
         Returns:
-            SheetCacheEntry if found, None otherwise
+            CacheEntry if valid cache exists, None otherwise
         """
-        entry = self.get_spreadsheet(spreadsheet_id)
+        key = (spreadsheet_id, gid)
+        entry = self._cache.get(key)
+        
         if entry is None:
             return None
         
-        sheets = entry.data.get("sheets", {})
-        sheet = sheets.get(gid)
-        
-        if sheet is None:
+        if entry.is_expired():
+            del self._cache[key]
             return None
         
-        # Compute per-sheet ETag (based on sheet content only)
-        sheet_data = {"headers": sheet.get("headers", []), "data": sheet.get("data", [])}
-        sheet_etag = self.compute_etag(sheet_data)
+        return entry
+    
+    def set(self, spreadsheet_id: str, gid: str, data: dict[str, Any]) -> CacheEntry:
+        """
+        Store sheet data in cache.
         
-        return SheetCacheEntry(
-            headers=sheet.get("headers", []),
-            data=sheet.get("data", []),
-            etag=sheet_etag
-        )
+        Args:
+            spreadsheet_id: Google Sheets document ID
+            gid: Sheet tab ID
+            data: Sheet data to cache
+            
+        Returns:
+            Created CacheEntry
+        """
+        key = (spreadsheet_id, gid)
+        etag = self.compute_etag(data)
+        expires_at = time.time() + self._settings.cache_ttl
+        
+        entry = CacheEntry(data=data, etag=etag, expires_at=expires_at)
+        self._cache[key] = entry
+        
+        return entry
     
     def clear(self):
         """Clear all cache entries."""
@@ -145,21 +107,17 @@ class SpreadsheetCache:
             del self._cache[key]
     
     def size(self) -> int:
-        """Get number of cached spreadsheets."""
+        """Get number of cached sheets."""
         return len(self._cache)
 
 
-# Legacy alias for backwards compatibility
-SheetCache = SpreadsheetCache
-
-
 # Singleton instance
-_cache: SpreadsheetCache | None = None
+_cache: SheetCache | None = None
 
 
-def get_cache() -> SpreadsheetCache:
+def get_cache() -> SheetCache:
     """Get singleton cache instance."""
     global _cache
     if _cache is None:
-        _cache = SpreadsheetCache()
+        _cache = SheetCache()
     return _cache

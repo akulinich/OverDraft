@@ -3,8 +3,7 @@ Sheets API endpoint.
 Provides cached access to Google Sheets data with ETag support.
 Returns CSV format for compatibility with existing client code.
 
-Optimization: Fetches entire spreadsheet in one Google API call,
-then serves individual sheet requests from cache.
+Optimization: Fetches only specific sheets, not entire document.
 """
 
 import re
@@ -97,8 +96,7 @@ async def get_sheet(
     """
     Fetch sheet data with caching and ETag support.
     
-    Optimization: Caches entire spreadsheet, serves individual sheets from cache.
-    One Google API call serves all sheets in the same document.
+    Optimization: Fetches only the specific sheet, not the entire document.
     
     Query Parameters:
         spreadsheetId: Google Sheets document ID
@@ -122,36 +120,36 @@ async def get_sheet(
     client = get_sheets_client()
     metrics = get_metrics()
     
-    # Check cache first (by spreadsheet_id, extract specific sheet)
-    cached_sheet = cache.get_sheet(spreadsheet_id, gid)
+    # Check cache first
+    cached = cache.get(spreadsheet_id, gid)
     
-    if cached_sheet is not None:
+    if cached is not None:
         # Cache hit
         metrics.record_cache_hit()
         
         # Check ETag
-        if if_none_match and if_none_match == cached_sheet.etag:
+        if if_none_match and if_none_match == cached.etag:
             return Response(status_code=304, headers={
-                "ETag": cached_sheet.etag,
+                "ETag": cached.etag,
                 "Cache-Control": "no-cache"
             })
         
         # Return cached sheet as CSV
-        csv_content = to_csv(cached_sheet.headers, cached_sheet.data)
+        csv_content = to_csv(cached.data.get("headers", []), cached.data.get("data", []))
         return Response(
             content=csv_content,
             media_type="text/csv; charset=utf-8",
             headers={
-                "ETag": cached_sheet.etag,
+                "ETag": cached.etag,
                 "Cache-Control": "no-cache"
             }
         )
     
-    # Cache miss - fetch entire spreadsheet from Google
+    # Cache miss - fetch specific sheet from Google
     metrics.record_cache_miss()
     
     try:
-        spreadsheet_data = await client.fetch_spreadsheet(spreadsheet_id)
+        sheet_data = await client.fetch_sheet(spreadsheet_id, gid)
         metrics.record_google_request(spreadsheet_id)
     except GoogleSheetsError as e:
         metrics.record_error()
@@ -165,38 +163,23 @@ async def get_sheet(
             raise HTTPException(status_code=502, detail=str(e))
         raise HTTPException(status_code=502, detail=str(e))
     
-    # Store entire spreadsheet in cache
-    cache.set_spreadsheet(spreadsheet_id, spreadsheet_data)
-    
-    # Extract the requested sheet
-    sheet = client.get_sheet_from_spreadsheet(spreadsheet_data, gid)
-    
-    if sheet is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Sheet with gid={gid} not found in spreadsheet"
-        )
-    
-    headers = sheet.get("headers", [])
-    data = sheet.get("data", [])
-    
-    # Compute ETag for this specific sheet
-    sheet_etag = cache.compute_etag({"headers": headers, "data": data})
+    # Store in cache
+    entry = cache.set(spreadsheet_id, gid, sheet_data)
     
     # Check if client already has this data
-    if if_none_match and if_none_match == sheet_etag:
+    if if_none_match and if_none_match == entry.etag:
         return Response(status_code=304, headers={
-            "ETag": sheet_etag,
+            "ETag": entry.etag,
             "Cache-Control": "no-cache"
         })
     
     # Return as CSV
-    csv_content = to_csv(headers, data)
+    csv_content = to_csv(sheet_data.get("headers", []), sheet_data.get("data", []))
     return Response(
         content=csv_content,
         media_type="text/csv; charset=utf-8",
         headers={
-            "ETag": sheet_etag,
+            "ETag": entry.etag,
             "Cache-Control": "no-cache"
         }
     )
