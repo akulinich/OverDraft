@@ -117,6 +117,14 @@ async function fetchAndRenderPlayers(skipColumnValidation = false, forceShowConf
     } else {
       // Fetch from Google Sheets
       data = await fetchSheet(sheet.spreadsheetId, sheet.gid);
+      
+      // Handle pending state (server is still fetching data)
+      if (data.pending) {
+        if (config.isDev) {
+          console.log('[App] Players data pending, waiting for next poll');
+        }
+        return;
+      }
     }
     
     const sheetKey = getSheetKey(sheet.spreadsheetId, sheet.gid);
@@ -342,6 +350,14 @@ async function fetchAndRenderTeams(skipLayoutValidation = false) {
     } else {
       // Fetch from Google Sheets
       data = await fetchSheet(teamsSheet.spreadsheetId, teamsSheet.gid);
+      
+      // Handle pending state (server is still fetching data)
+      if (data.pending) {
+        if (config.isDev) {
+          console.log('[App] Teams data pending, waiting for next poll');
+        }
+        return;
+      }
     }
     
     const sheetKey = getSheetKey(teamsSheet.spreadsheetId, teamsSheet.gid);
@@ -372,8 +388,7 @@ async function fetchAndRenderTeams(skipLayoutValidation = false) {
           allRows,
           layoutConfig,
           validation.parseError,
-          onTeamsLayoutConfirmed,
-          onTeamsLayoutCancelled
+          onTeamsLayoutConfirmed
         );
         return;
       }
@@ -454,18 +469,6 @@ async function onTeamsLayoutConfirmed(layoutConfig) {
   // Start polling if not already running
   if (!pollingManager?.isRunning()) {
     startPolling();
-  }
-}
-
-/**
- * Called when teams layout configuration is cancelled
- */
-function onTeamsLayoutCancelled() {
-  isTeamsLayoutPending = false;
-  pendingTeamsData = null;
-  
-  if (store.getActiveTab() === 'teams') {
-    renderer.showTeamsNotConfigured();
   }
 }
 
@@ -836,8 +839,7 @@ async function onConfigureTeamsLayout() {
       allRows,
       layoutConfig,
       validation.parseError,
-      onTeamsLayoutConfirmed,
-      onTeamsLayoutCancelled
+      onTeamsLayoutConfirmed
     );
   } catch (err) {
     console.error('[App] Failed to load teams data for layout config:', err);

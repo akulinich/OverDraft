@@ -367,12 +367,18 @@ class BackgroundPoller:
         if not self._subscriptions or not self._cache:
             return
         
+        from app.services.metrics import get_metrics
+        metrics = get_metrics()
+        
         for spreadsheet_id, gids in self._subscriptions.items():
             if not gids:
                 continue
             
             try:
                 sheets_data = await self._client.fetch_multiple_sheets(spreadsheet_id, gids)
+                
+                # Record Google API request for metrics
+                metrics.record_google_request(spreadsheet_id)
                 
                 # Update cache for each sheet
                 for gid, data in sheets_data.items():

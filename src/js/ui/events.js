@@ -51,9 +51,6 @@ let onColumnConfigConfirmed = null;
 let onTeamsLayoutConfirmed = null;
 
 /** @type {function|null} */
-let onTeamsLayoutCancelled = null;
-
-/** @type {function|null} */
 let onTeamsDisplayConfigConfirmed = null;
 
 /** @type {function|null} */
@@ -1353,12 +1350,10 @@ function setupColumnConfigModal() {
  * @param {import('../storage/persistence.js').TeamsLayoutConfig} initialConfig
  * @param {import('../validation/schema.js').ParseError|null} parseError
  * @param {function(import('../storage/persistence.js').TeamsLayoutConfig): void} onConfirm
- * @param {function(): void} onCancel
  */
-export function openTeamsLayoutModal(rawData, initialConfig, parseError, onConfirm, onCancel) {
+export function openTeamsLayoutModal(rawData, initialConfig, parseError, onConfirm) {
   cachedTeamsRawData = rawData;
   onTeamsLayoutConfirmed = onConfirm;
-  onTeamsLayoutCancelled = onCancel;
   
   renderer.renderTeamsLayoutModal(rawData, initialConfig, parseError);
   renderer.showTeamsLayoutModal();
@@ -1468,38 +1463,15 @@ function setupTeamsDisplayModal() {
  * Sets up teams layout modal event handlers
  */
 function setupTeamsLayoutModal() {
-  const modal = document.getElementById('teams-layout-modal');
-  const closeBtn = document.getElementById('close-teams-layout');
-  const cancelBtn = document.getElementById('cancel-teams-layout');
   const confirmBtn = document.getElementById('confirm-teams-layout');
   const paramsContainer = document.querySelector('.teams-layout-params');
-  
-  // Close button
-  closeBtn?.addEventListener('click', () => {
-    renderer.hideTeamsLayoutModal();
-    if (onTeamsLayoutCancelled) onTeamsLayoutCancelled();
-  });
-  
-  // Cancel button
-  cancelBtn?.addEventListener('click', () => {
-    renderer.hideTeamsLayoutModal();
-    if (onTeamsLayoutCancelled) onTeamsLayoutCancelled();
-  });
-  
-  // Backdrop click
-  modal?.addEventListener('click', (e) => {
-    if (e.target?.classList?.contains('modal-backdrop')) {
-      renderer.hideTeamsLayoutModal();
-      if (onTeamsLayoutCancelled) onTeamsLayoutCancelled();
-    }
-  });
   
   // Parameter inputs - live validation on change
   paramsContainer?.addEventListener('input', () => {
     validateAndUpdateTeamsLayout();
   });
   
-  // Confirm button
+  // Confirm button - only way to close this modal
   confirmBtn?.addEventListener('click', () => {
     const config = renderer.getTeamsLayoutParams();
     renderer.hideTeamsLayoutModal();

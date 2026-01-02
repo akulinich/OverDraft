@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     cors_origins: list[str] = []
     
     # Rate limiting (per IP per spreadsheet)
-    rate_limit: str = "90/minute"
+    # High limit since client requests only read from cache (no Google API calls)
+    rate_limit: str = "1000/minute"
     
     model_config = {
         "env_file": ".env",
