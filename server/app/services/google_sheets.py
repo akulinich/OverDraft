@@ -1,8 +1,10 @@
 """
 Google Sheets API client.
 Fetches data from public Google Sheets using the official API.
+Includes request coalescing to prevent duplicate API calls.
 """
 
+import asyncio
 import httpx
 from typing import Any
 
@@ -20,13 +22,21 @@ class GoogleSheetsError(Exception):
 
 
 class GoogleSheetsClient:
-    """Client for fetching data from Google Sheets API."""
+    """
+    Client for fetching data from Google Sheets API.
+    
+    Implements request coalescing: if multiple requests come in for the same
+    sheet while a Google API request is already in-flight, they all wait for
+    the same response instead of triggering new API requests.
+    """
     
     BASE_URL = "https://sheets.googleapis.com/v4/spreadsheets"
     
     def __init__(self):
         self.settings = get_settings()
         self._client: httpx.AsyncClient | None = None
+        # Track in-flight requests for coalescing
+        self._pending_requests: dict[tuple[str, str], asyncio.Task] = {}
     
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
@@ -41,7 +51,11 @@ class GoogleSheetsClient:
     
     async def fetch_sheet(self, spreadsheet_id: str, gid: str) -> dict[str, Any]:
         """
-        Fetch sheet data from Google Sheets API.
+        Fetch sheet data from Google Sheets API with request coalescing.
+        
+        If a request for the same sheet is already in progress, waits for
+        that request instead of starting a new one. This prevents duplicate
+        API calls when multiple clients request the same data simultaneously.
         
         Args:
             spreadsheet_id: Google Sheets document ID
@@ -61,6 +75,34 @@ class GoogleSheetsClient:
                 gid
             )
         
+        key = (spreadsheet_id, gid)
+        
+        # Check if request is already in-flight
+        if key in self._pending_requests:
+            # Wait for the existing request
+            return await self._pending_requests[key]
+        
+        # Create new request task
+        task = asyncio.create_task(self._do_fetch_sheet(spreadsheet_id, gid))
+        self._pending_requests[key] = task
+        
+        try:
+            return await task
+        finally:
+            # Clean up after completion (success or failure)
+            self._pending_requests.pop(key, None)
+    
+    async def _do_fetch_sheet(self, spreadsheet_id: str, gid: str) -> dict[str, Any]:
+        """
+        Actually perform the fetch from Google Sheets API.
+        
+        Args:
+            spreadsheet_id: Google Sheets document ID
+            gid: Sheet tab ID (numeric)
+            
+        Returns:
+            dict with headers and data arrays
+        """
         # First, get sheet metadata to find sheet name by gid
         sheet_name = await self._get_sheet_name(spreadsheet_id, gid)
         

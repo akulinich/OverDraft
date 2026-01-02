@@ -293,7 +293,7 @@ class VPSConfig:
     github_pat: str
     google_api_key: str
     domain: str | None = None
-    cache_ttl: int = 1
+    cache_ttl: int = 1  # seconds
     cors_origins: list[str] | None = None
     rate_limit: str = "60/minute"
 
