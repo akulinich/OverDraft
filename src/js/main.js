@@ -578,7 +578,7 @@ function startPolling() {
     return;
   }
   
-  pollingManager = createPollingManager(fetchAndRender, store.getState().pollingInterval);
+  pollingManager = createPollingManager(fetchAndRender, config.pollingInterval);
   pollingManager.start();
 }
 
@@ -786,16 +786,6 @@ function getFilteredTableData(headers, data, teams) {
     const nickname = row[nicknameIdx]?.trim()?.toLowerCase();
     return nickname && filteredNicknames.has(nickname);
   });
-}
-
-/**
- * Called when polling interval changes
- * @param {number} interval 
- */
-function onPollingIntervalChange(interval) {
-  if (pollingManager) {
-    pollingManager.setInterval(interval);
-  }
 }
 
 /**
@@ -1038,12 +1028,10 @@ async function init() {
   
   // Apply saved theme
   renderer.applyTheme(store.getState().theme);
-  renderer.updatePollingDisplay(store.getState().pollingInterval);
   
   // Initialize event handlers
   events.initializeEvents({
     onSheetConfigured,
-    onPollingIntervalChange,
     onTabChange,
     onFilterChange,
     onPlayerRowSelect,

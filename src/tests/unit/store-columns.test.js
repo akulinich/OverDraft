@@ -20,7 +20,7 @@ vi.mock('../../js/storage/persistence.js', async (importOriginal) => {
     ...actual,
     loadConfiguredSheets: vi.fn(() => []),
     loadTeamsSheet: vi.fn(() => null),
-    loadSettings: vi.fn(() => ({ pollingInterval: 1000, theme: 'dark' })),
+    loadSettings: vi.fn(() => ({ theme: 'dark' })),
     saveConfiguredSheets: vi.fn(),
     saveSettings: vi.fn(),
     saveTeamsSheet: vi.fn(),

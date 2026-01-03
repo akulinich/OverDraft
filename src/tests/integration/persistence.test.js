@@ -78,16 +78,14 @@ describe('Persistence Layer', () => {
   describe('Settings', () => {
     it('returns defaults when no settings saved', () => {
       const settings = loadSettings();
-      expect(settings.pollingInterval).toBe(1000);
       expect(settings.theme).toBe('dark');
     });
 
     it('merges partial settings with defaults', () => {
-      saveSettings({ pollingInterval: 5000 });
+      saveSettings({ theme: 'light' });
       const settings = loadSettings();
       
-      expect(settings.pollingInterval).toBe(5000);
-      expect(settings.theme).toBe('dark'); // Default preserved
+      expect(settings.theme).toBe('light');
     });
   });
 
@@ -231,7 +229,7 @@ describe('Persistence Layer', () => {
   describe('clearAll', () => {
     it('removes all storage keys', () => {
       saveConfiguredSheets([{ spreadsheetId: 'x', gid: '0', addedAt: '' }]);
-      saveSettings({ pollingInterval: 5000 });
+      saveSettings({ theme: 'light' });
       saveLocalCSVData('test.csv', 'data');
       
       clearAll();

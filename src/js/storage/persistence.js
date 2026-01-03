@@ -34,7 +34,6 @@ const CURRENT_VERSION = 1;
 /**
  * @typedef {Object} StoredSettings
  * @property {number} version
- * @property {number} pollingInterval
  * @property {'light'|'dark'} theme
  */
 
@@ -120,7 +119,6 @@ const CURRENT_VERSION = 1;
 function getDefaultSettings() {
   return {
     version: CURRENT_VERSION,
-    pollingInterval: 1000,
     theme: 'dark'
   };
 }

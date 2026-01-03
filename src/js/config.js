@@ -2,10 +2,8 @@
  * Application configuration constants
  */
 export const config = {
-  // Polling settings
-  defaultPollingInterval: 1000,
-  minPollingInterval: 500,
-  maxPollingInterval: 5000,
+  // Polling interval (fixed at 1 second)
+  pollingInterval: 1000,
   
   // Sheet limits
   maxSheets: 10,

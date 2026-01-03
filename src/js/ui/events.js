@@ -30,9 +30,6 @@ let selectedLocalTeamsFile = null;
 let onSheetConfigured = null;
 
 /** @type {function|null} */
-let onPollingIntervalChange = null;
-
-/** @type {function|null} */
 let onFilterChange = null;
 
 /** @type {function|null} */
@@ -714,8 +711,6 @@ function setupSettingsModal() {
   const closeBtn = document.getElementById('close-settings');
   const changeSheetBtn = document.getElementById('change-sheet');
   const configureTeamsLayoutBtn = document.getElementById('configure-teams-layout');
-  const pollingSlider = /** @type {HTMLInputElement} */ (document.getElementById('polling-interval'));
-  const pollingValue = document.getElementById('polling-value');
   
   // Open settings
   settingsBtn?.addEventListener('click', () => {
@@ -725,7 +720,6 @@ function setupSettingsModal() {
     }
     const teamsSheet = store.getTeamsSheet();
     renderer.updateTeamsSheetInfo(teamsSheet);
-    renderer.updatePollingDisplay(store.getState().pollingInterval);
     
     // Show/hide teams layout button based on whether teams sheet is configured
     if (configureTeamsLayoutBtn) {
@@ -757,18 +751,6 @@ function setupSettingsModal() {
   changeSheetBtn?.addEventListener('click', () => {
     hideModal('settings-modal');
     showModal('setup-modal', { prefill: true });
-  });
-  
-  // Polling interval
-  pollingSlider?.addEventListener('input', () => {
-    const value = parseInt(pollingSlider.value, 10);
-    if (pollingValue) pollingValue.textContent = `${value / 1000}s`;
-  });
-  
-  pollingSlider?.addEventListener('change', () => {
-    const value = parseInt(pollingSlider.value, 10);
-    store.setPollingInterval(value);
-    if (onPollingIntervalChange) onPollingIntervalChange(value);
   });
   
   // Theme toggle
@@ -1485,7 +1467,6 @@ function setupTeamsLayoutModal() {
  * Initializes all event handlers
  * @param {Object} callbacks
  * @param {function} callbacks.onSheetConfigured - Called when sheet is configured
- * @param {function} callbacks.onPollingIntervalChange - Called when polling interval changes
  * @param {function} [callbacks.onTabChange] - Called when tab changes
  * @param {function} [callbacks.onFilterChange] - Called when a filter is toggled
  * @param {function} [callbacks.onPlayerRowSelect] - Called when a player row is clicked in players table
@@ -1497,7 +1478,6 @@ function setupTeamsLayoutModal() {
  */
 export function initializeEvents(callbacks) {
   onSheetConfigured = callbacks.onSheetConfigured || null;
-  onPollingIntervalChange = callbacks.onPollingIntervalChange || null;
   onFilterChange = callbacks.onFilterChange || null;
   onPlayerRowSelect = callbacks.onPlayerRowSelect || null;
   onTeamPlayerSelect = callbacks.onTeamPlayerSelect || null;

@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // Mock persistence before importing store
 vi.mock('../../js/storage/persistence.js', () => ({
   loadConfiguredSheets: vi.fn(() => []),
-  loadSettings: vi.fn(() => ({ version: 1, pollingInterval: 1000, theme: 'dark' })),
+  loadSettings: vi.fn(() => ({ version: 1, theme: 'dark' })),
   loadTeamsSheet: vi.fn(() => null),
   saveConfiguredSheets: vi.fn(),
   saveSettings: vi.fn(),
@@ -37,7 +37,6 @@ import {
   setLoading,
   setError,
   clearError,
-  setPollingInterval,
   setTheme,
   hasConfiguredSheets,
   getFirstSheet,
@@ -80,7 +79,6 @@ describe('Store', () => {
       
       expect(state.configuredSheets).toEqual([]);
       expect(state.teamsSheet).toBeNull();
-      expect(state.pollingInterval).toBe(1000);
       expect(state.theme).toBe('dark');
     });
   });
@@ -240,11 +238,6 @@ describe('Store', () => {
   });
 
   describe('Settings', () => {
-    it('sets polling interval', () => {
-      setPollingInterval(5000);
-      expect(getState().pollingInterval).toBe(5000);
-    });
-
     it('sets theme', () => {
       setTheme('light');
       expect(getState().theme).toBe('light');

@@ -965,18 +965,6 @@ export function applyTheme(theme) {
 }
 
 /**
- * Updates polling interval display
- * @param {number} ms 
- */
-export function updatePollingDisplay(ms) {
-  const slider = /** @type {HTMLInputElement} */ (document.getElementById('polling-interval'));
-  const display = document.getElementById('polling-value');
-  
-  if (slider) slider.value = String(ms);
-  if (display) display.textContent = `${ms / 1000}s`;
-}
-
-/**
  * Updates tabs visibility
  * @param {boolean} showTabs 
  */

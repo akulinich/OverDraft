@@ -82,7 +82,6 @@ import { getSheetKey } from '../utils/parser.js';
  * @property {Player|null} selectedPlayer - Currently selected player for details
  * @property {boolean} isLoading
  * @property {Map<string, Error>} errors
- * @property {number} pollingInterval
  * @property {'light'|'dark'} theme
  * @property {'players'|'teams'|'draft'} activeTab - Currently active tab
  * @property {boolean} overfastLoaded - Whether OverFast API data is loaded
@@ -111,7 +110,6 @@ let state = {
   selectedPlayer: null,
   isLoading: false,
   errors: new Map(),
-  pollingInterval: 1000,
   theme: 'dark',
   activeTab: 'players',
   overfastLoaded: false,
@@ -199,7 +197,6 @@ export function initializeState() {
     ...state,
     configuredSheets: sheets,
     teamsSheet,
-    pollingInterval: settings.pollingInterval,
     theme: settings.theme
   };
   
@@ -901,16 +898,6 @@ export function clearError(spreadsheetId, gid) {
   const key = getSheetKey(spreadsheetId, gid);
   state.errors.delete(key);
   notify('errors');
-}
-
-/**
- * Updates polling interval
- * @param {number} interval 
- */
-export function setPollingInterval(interval) {
-  state.pollingInterval = interval;
-  saveSettings({ pollingInterval: interval });
-  notify('pollingInterval');
 }
 
 /**
