@@ -689,9 +689,11 @@ export function renderPlayerDetailsPanelWithConfig(player, headers, config, cont
     // Render based on column type
     switch (col.columnType) {
       case 'rating': {
+        // Use actual value from this column, not player.rating (which may be from a different column)
+        const ratingValue = parseInt(value, 10) || 0;
         const ratingStat = createElement('div', { className: 'player-info-stat' });
         ratingStat.appendChild(createElement('span', { className: 'stat-label' }, col.displayName));
-        const rankBadge = createRankBadge(player.rating, { showNumber: true, size: 'md' });
+        const rankBadge = createRankBadge(ratingValue, { showNumber: true, size: 'md' });
         rankBadge.classList.add('stat-value');
         ratingStat.appendChild(rankBadge);
         keyColumnsSection.appendChild(ratingStat);
@@ -699,12 +701,18 @@ export function renderPlayerDetailsPanelWithConfig(player, headers, config, cont
         break;
       }
       case 'role': {
+        // Use actual value from this column, not player.role (which may be from a different column)
+        const roleValue = normalizeRoleValue(value);
         const roleStat = createElement('div', { className: 'player-info-stat' });
         roleStat.appendChild(createElement('span', { className: 'stat-label' }, col.displayName));
-        const roleValue = createElement('span', { className: 'stat-value stat-role' });
-        roleValue.appendChild(createRoleIcon(player.role, { size: 'sm' }));
-        roleValue.appendChild(document.createTextNode(' ' + getRoleDisplayName(player.role)));
-        roleStat.appendChild(roleValue);
+        const roleDisplay = createElement('span', { className: 'stat-value stat-role' });
+        if (roleValue) {
+          roleDisplay.appendChild(createRoleIcon(roleValue, { size: 'sm' }));
+          roleDisplay.appendChild(document.createTextNode(' ' + getRoleDisplayName(roleValue)));
+        } else {
+          roleDisplay.textContent = value;
+        }
+        roleStat.appendChild(roleDisplay);
         keyColumnsSection.appendChild(roleStat);
         hasKeyColumns = true;
         break;

@@ -1676,6 +1676,12 @@ body::before {
   grid-column: 1 / -1;
 }
 
+/* Stat items take one column in the grid */
+.player-info-key-columns .player-info-stat {
+  grid-column: span 1;
+  min-width: 0;
+}
+
 .player-info-stat {
   display: flex;
   flex-direction: column;
