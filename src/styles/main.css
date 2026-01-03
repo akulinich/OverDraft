@@ -863,6 +863,59 @@ body::before {
   z-index: 10;
 }
 
+/* Sortable column headers */
+#data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+#data-table th.sortable:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+#data-table th.sortable .header-text {
+  display: inline;
+}
+
+#data-table th.sortable .sort-indicator {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-left: var(--space-xs);
+  vertical-align: middle;
+  opacity: 0.3;
+  transition: opacity var(--transition-fast);
+}
+
+#data-table th.sortable .sort-indicator::after {
+  content: '⇅';
+  font-size: 0.75rem;
+}
+
+#data-table th.sortable:hover .sort-indicator {
+  opacity: 0.6;
+}
+
+#data-table th.sortable.sorted {
+  color: var(--accent-primary);
+  background: var(--bg-hover);
+}
+
+#data-table th.sortable.sorted .sort-indicator {
+  opacity: 1;
+  color: var(--accent-primary);
+}
+
+#data-table th.sortable.sorted.sort-desc .sort-indicator::after {
+  content: '↓';
+}
+
+#data-table th.sortable.sorted.sort-asc .sort-indicator::after {
+  content: '↑';
+}
+
 #data-table tbody tr {
   transition: background var(--transition-fast);
 }

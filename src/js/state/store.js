@@ -72,6 +72,12 @@ import { getSheetKey } from '../utils/parser.js';
  */
 
 /**
+ * @typedef {Object} SortState
+ * @property {string|null} columnId - Column ID to sort by, null = no sorting
+ * @property {'asc'|'desc'} direction - Sort direction
+ */
+
+/**
  * @typedef {Object} AppState
  * @property {Map<string, SheetData>} sheets - Cached sheet data
  * @property {SheetConfig[]} configuredSheets - User-configured sheets
@@ -88,6 +94,7 @@ import { getSheetKey } from '../utils/parser.js';
  * @property {boolean} overfastLoaded - Whether OverFast API data is loaded
  * @property {boolean} overfastLoading - Whether OverFast API data is currently loading
  * @property {FilterState} filters - Player list filters
+ * @property {SortState} sort - Table sort state
  * @property {Map<string, ColumnMapping>} columnMappings - Column mappings by sheet key (deprecated)
  * @property {Map<string, ColumnsConfiguration>} columnsConfigs - Dynamic column configurations by sheet key
  * @property {Map<string, TeamsDisplayConfig>} teamsDisplayConfigs - Teams display configs by sheet key
@@ -119,6 +126,10 @@ let state = {
   filters: {
     availableOnly: false,
     role: null
+  },
+  sort: {
+    columnId: null,
+    direction: 'desc'
   },
   columnMappings: new Map(),
   columnsConfigs: new Map(),
@@ -1289,6 +1300,54 @@ export function toggleFilterRole(role) {
 export function resetFilters() {
   state.filters = { availableOnly: false, role: null };
   notify('filters');
+}
+
+// ============================================================================
+// Sort State
+// ============================================================================
+
+/**
+ * Gets the current sort state
+ * @returns {SortState}
+ */
+export function getSortState() {
+  return state.sort;
+}
+
+/**
+ * Sets the sort column and direction
+ * @param {string|null} columnId - Column ID to sort by, null to clear
+ * @param {'asc'|'desc'} [direction='desc'] - Sort direction
+ */
+export function setSortColumn(columnId, direction = 'desc') {
+  state.sort = { columnId, direction };
+  notify('sort');
+}
+
+/**
+ * Toggles sort on a column (cycles: desc -> asc -> none)
+ * @param {string} columnId
+ */
+export function toggleSort(columnId) {
+  if (state.sort.columnId !== columnId) {
+    // New column - start with descending (highest first)
+    state.sort = { columnId, direction: 'desc' };
+  } else if (state.sort.direction === 'desc') {
+    // Same column, desc -> asc
+    state.sort = { columnId, direction: 'asc' };
+  } else {
+    // Same column, asc -> clear sort
+    state.sort = { columnId: null, direction: 'desc' };
+  }
+  notify('sort');
+}
+
+/**
+ * Clears any active sort
+ */
+export function clearSort() {
+  state.sort = { columnId: null, direction: 'desc' };
+  notify('sort');
 }
 
 /**

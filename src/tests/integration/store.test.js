@@ -63,6 +63,10 @@ import {
   toggleFilterRole,
   resetFilters,
   getFilteredPlayers,
+  getSortState,
+  setSortColumn,
+  toggleSort,
+  clearSort,
   REQUIRED_COLUMNS
 } from '../../js/state/store.js';
 
@@ -448,6 +452,55 @@ describe('Store', () => {
       
       expect(players.length).toBe(1);
       expect(players[0].nickname).toBe('Tank2');
+    });
+  });
+
+  describe('Sort State', () => {
+    beforeEach(() => {
+      clearSort(); // Reset sort state before each test
+    });
+
+    it('has default sort state', () => {
+      const sort = getSortState();
+      expect(sort.columnId).toBeNull();
+      expect(sort.direction).toBe('desc');
+    });
+
+    it('sets sort column and direction', () => {
+      setSortColumn('col_123', 'asc');
+      
+      const sort = getSortState();
+      expect(sort.columnId).toBe('col_123');
+      expect(sort.direction).toBe('asc');
+    });
+
+    it('toggles sort on new column (starts with desc)', () => {
+      toggleSort('col_rating');
+      
+      const sort = getSortState();
+      expect(sort.columnId).toBe('col_rating');
+      expect(sort.direction).toBe('desc');
+    });
+
+    it('toggles sort on same column (desc -> asc -> null)', () => {
+      toggleSort('col_rating');
+      expect(getSortState().direction).toBe('desc');
+      
+      toggleSort('col_rating');
+      expect(getSortState().direction).toBe('asc');
+      expect(getSortState().columnId).toBe('col_rating');
+      
+      toggleSort('col_rating');
+      expect(getSortState().columnId).toBeNull();
+    });
+
+    it('clears sort', () => {
+      setSortColumn('col_rating', 'asc');
+      clearSort();
+      
+      const sort = getSortState();
+      expect(sort.columnId).toBeNull();
+      expect(sort.direction).toBe('desc');
     });
   });
 });

@@ -1040,7 +1040,8 @@ async function init() {
     onColumnMappingConfirmed,
     onColumnConfigConfirmed,
     onTeamsDisplayConfigConfirmed,
-    onConfigureTeamsLayout
+    onConfigureTeamsLayout,
+    onSortChange: onFilterChange // Reuse filter change handler - it re-renders the table
   });
   
   // Subscribe to language changes to re-render data

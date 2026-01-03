@@ -241,23 +241,28 @@ function normalizeRoleValue(value) {
 function applyFiltersToTableData(data, headers, teams) {
   const filters = store.getFilters();
   
-  // If no filters active, return original data
+  // Find nickname column index using mapping
+  const nicknameIdx = getNicknameColumnIndex(headers);
+  
+  // Always filter out empty rows (rows without nickname)
+  const nonEmptyData = nicknameIdx !== -1
+    ? data.filter(row => row[nicknameIdx]?.trim())
+    : data;
+  
+  // If no filters active, return non-empty data
   if (!filters.availableOnly && filters.role === null) {
-    return data;
+    return nonEmptyData;
   }
   
   // Get filtered players from store
   const filteredPlayers = store.getFilteredPlayers(teams);
   const filteredNicknames = new Set(filteredPlayers.map(p => p.nickname.toLowerCase()));
   
-  // Find nickname column index using mapping
-  const nicknameIdx = getNicknameColumnIndex(headers);
-  
   if (nicknameIdx === -1) {
-    return data; // Can't filter without nickname column
+    return nonEmptyData; // Can't filter by role/availability without nickname column
   }
   
-  return data.filter(row => {
+  return nonEmptyData.filter(row => {
     const nickname = row[nicknameIdx]?.trim()?.toLowerCase();
     return nickname && filteredNicknames.has(nickname);
   });
@@ -416,6 +421,46 @@ export function renderPlayersTable(headers, data, teams = []) {
 }
 
 /**
+ * Applies sorting to table data
+ * @param {string[][]} data - Data rows to sort
+ * @param {import('../storage/persistence.js').ColumnsConfiguration} config - Columns config
+ * @param {string[]} headers - Sheet headers
+ * @returns {string[][]} Sorted data (new array)
+ */
+function applySortToTableData(data, config, headers) {
+  const sortState = store.getSortState();
+  
+  if (!sortState.columnId) {
+    return data;
+  }
+  
+  // Find the column config by ID
+  const orderedColumns = getOrderedColumns(config);
+  const sortColumn = orderedColumns.find(c => c.id === sortState.columnId);
+  
+  if (!sortColumn) {
+    return data;
+  }
+  
+  const colIndex = headers.indexOf(sortColumn.sheetColumn);
+  if (colIndex === -1) {
+    return data;
+  }
+  
+  // Create a shallow copy and sort
+  const sortedData = [...data];
+  const direction = sortState.direction === 'asc' ? 1 : -1;
+  
+  sortedData.sort((a, b) => {
+    const valA = parseInt(a[colIndex], 10) || 0;
+    const valB = parseInt(b[colIndex], 10) || 0;
+    return (valA - valB) * direction;
+  });
+  
+  return sortedData;
+}
+
+/**
  * Renders players table using dynamic columns configuration
  * @param {string[]} headers 
  * @param {string[][]} data 
@@ -424,13 +469,15 @@ export function renderPlayersTable(headers, data, teams = []) {
  */
 export function renderPlayersTableWithConfig(headers, data, config, teams = []) {
   const orderedColumns = getOrderedColumns(config);
+  const sortState = store.getSortState();
   
   // Build column info with indices
   const columnInfo = orderedColumns.map(col => ({
     config: col,
     index: headers.indexOf(col.sheetColumn),
     header: col.displayName,
-    key: col.columnType
+    key: col.columnType,
+    id: col.id
   })).filter(col => col.index !== -1);
   
   // Render header
@@ -440,7 +487,28 @@ export function renderPlayersTableWithConfig(headers, data, config, teams = []) 
     const tr = createElement('tr');
     
     for (const col of columnInfo) {
-      const th = createElement('th', { className: `col-${col.key}` }, escapeHtml(col.header));
+      const isSortable = col.key === 'rating';
+      const isSorted = sortState.columnId === col.id;
+      
+      const thClasses = [`col-${col.key}`];
+      if (isSortable) thClasses.push('sortable');
+      if (isSorted) thClasses.push('sorted', `sort-${sortState.direction}`);
+      
+      const th = createElement('th', { 
+        className: thClasses.join(' '),
+        dataset: isSortable ? { sortColumn: col.id } : {}
+      });
+      
+      // Header text
+      const headerText = createElement('span', { className: 'header-text' }, escapeHtml(col.header));
+      th.appendChild(headerText);
+      
+      // Sort indicator for sortable columns
+      if (isSortable) {
+        const sortIndicator = createElement('span', { className: 'sort-indicator' });
+        th.appendChild(sortIndicator);
+      }
+      
       tr.appendChild(th);
     }
     
@@ -451,12 +519,13 @@ export function renderPlayersTableWithConfig(headers, data, config, teams = []) 
   const tbody = document.getElementById('table-body');
   if (!tbody) return;
   
-  // Apply filters
+  // Apply filters first, then sorting
   const filteredData = applyFiltersToTableData(data, headers, teams);
+  const sortedData = applySortToTableData(filteredData, config, headers);
   
   const fragment = document.createDocumentFragment();
   
-  filteredData.forEach((row, rowIndex) => {
+  sortedData.forEach((row, rowIndex) => {
     const tr = createElement('tr', { 
       className: 'player-table-row',
       dataset: { rowIndex: String(rowIndex) }

@@ -53,6 +53,9 @@ let onTeamsDisplayConfigConfirmed = null;
 /** @type {function|null} */
 let onConfigureTeamsLayout = null;
 
+/** @type {function|null} */
+let onSortChange = null;
+
 /** @type {string[]} Cached sheet headers for column mapping validation */
 let cachedSheetHeaders = [];
 
@@ -1063,6 +1066,30 @@ function setupPlayerRowClicks() {
   });
 }
 
+/**
+ * Sets up sortable column headers
+ */
+function setupSortableHeaders() {
+  const tableHeader = document.getElementById('table-header');
+  if (!tableHeader) return;
+  
+  tableHeader.addEventListener('click', (e) => {
+    const th = e.target.closest('th.sortable');
+    if (!th) return;
+    
+    const columnId = th.dataset.sortColumn;
+    if (!columnId) return;
+    
+    // Toggle sort on this column
+    store.toggleSort(columnId);
+    
+    // Trigger callback to re-render
+    if (onSortChange) {
+      onSortChange();
+    }
+  });
+}
+
 // ============================================================================
 // Column Mapping Modal
 // ============================================================================
@@ -1494,6 +1521,7 @@ function setupTeamsLayoutModal() {
  * @param {function} [callbacks.onColumnConfigConfirmed] - Called when column configuration is confirmed
  * @param {function} [callbacks.onTeamsDisplayConfigConfirmed] - Called when teams display config is confirmed
  * @param {function} [callbacks.onConfigureTeamsLayout] - Called when teams layout config is requested
+ * @param {function} [callbacks.onSortChange] - Called when sort column is changed
  */
 export function initializeEvents(callbacks) {
   onSheetConfigured = callbacks.onSheetConfigured || null;
@@ -1504,6 +1532,7 @@ export function initializeEvents(callbacks) {
   onColumnConfigConfirmed = callbacks.onColumnConfigConfirmed || null;
   onTeamsDisplayConfigConfirmed = callbacks.onTeamsDisplayConfigConfirmed || null;
   onConfigureTeamsLayout = callbacks.onConfigureTeamsLayout || null;
+  onSortChange = callbacks.onSortChange || null;
   
   setupUrlValidation();
   setupSheetForm();
@@ -1516,6 +1545,7 @@ export function initializeEvents(callbacks) {
   setupTeamPlayerClicks();
   setupFilterButtons();
   setupPlayerRowClicks();
+  setupSortableHeaders();
   setupColumnMappingModal();
   setupColumnConfigModal();
   setupTeamsDisplayModal();
