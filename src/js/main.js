@@ -1026,8 +1026,9 @@ async function init() {
     console.log('[OverDraft] Icons data loaded (local assets)');
   }
   
-  // Apply saved theme
+  // Apply saved theme and table density
   renderer.applyTheme(store.getState().theme);
+  renderer.applyTableDensity(store.getState().tableDensity);
   
   // Initialize event handlers
   events.initializeEvents({

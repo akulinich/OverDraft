@@ -32,9 +32,14 @@ const CURRENT_VERSION = 1;
  */
 
 /**
+ * @typedef {'compact'|'normal'|'comfortable'} TableDensity
+ */
+
+/**
  * @typedef {Object} StoredSettings
  * @property {number} version
  * @property {'light'|'dark'} theme
+ * @property {TableDensity} tableDensity
  */
 
 /**
@@ -119,7 +124,8 @@ const CURRENT_VERSION = 1;
 function getDefaultSettings() {
   return {
     version: CURRENT_VERSION,
-    theme: 'dark'
+    theme: 'dark',
+    tableDensity: 'comfortable'
   };
 }
 

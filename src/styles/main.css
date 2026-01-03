@@ -875,6 +875,65 @@ body::before {
   border-bottom: none;
 }
 
+/* Table density levels */
+#data-table.density-compact th,
+#data-table.density-compact td {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: 0.8rem;
+}
+
+#data-table.density-compact .hero-icon {
+  width: 20px;
+  height: 20px;
+}
+
+#data-table.density-compact .role-icon {
+  width: 16px;
+  height: 16px;
+}
+
+#data-table.density-compact .rank-icon {
+  width: 18px;
+  height: 18px;
+}
+
+#data-table.density-compact .rank-number {
+  font-size: 0.75rem;
+}
+
+#data-table.density-normal th,
+#data-table.density-normal td {
+  padding: var(--space-sm) var(--space-md);
+  font-size: 0.85rem;
+}
+
+#data-table.density-normal .hero-icon {
+  width: 24px;
+  height: 24px;
+}
+
+#data-table.density-normal .role-icon {
+  width: 18px;
+  height: 18px;
+}
+
+#data-table.density-normal .rank-icon {
+  width: 22px;
+  height: 22px;
+}
+
+#data-table.density-normal .rank-number {
+  font-size: 0.8rem;
+}
+
+/* Default (comfortable) is already styled above */
+
+#data-table.density-comfortable th,
+#data-table.density-comfortable td {
+  padding: var(--space-md) var(--space-lg);
+  font-size: 0.9rem;
+}
+
 /* Role-specific styling (Overwatch theme) */
 .role-tank {
   color: #facc15;
@@ -1179,6 +1238,45 @@ body::before {
   height: 24px;
   background: var(--border-color);
   margin: 0 var(--space-xs);
+}
+
+/* Table density controls */
+.density-controls {
+  margin-left: auto;
+}
+
+.density-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.density-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+}
+
+.density-btn:active {
+  transform: scale(0.95);
+}
+
+.density-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.density-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .tab-btn {

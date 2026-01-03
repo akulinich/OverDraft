@@ -1022,6 +1022,25 @@ function setupFilterButtons() {
       onFilterChange();
     }
   });
+  
+  // Density control buttons
+  const densityControls = document.getElementById('table-density');
+  if (densityControls) {
+    densityControls.addEventListener('click', (e) => {
+      const btn = e.target.closest('.density-btn');
+      if (!btn || btn.disabled) return;
+      
+      const action = btn.dataset.density;
+      if (action === 'decrease') {
+        store.decreaseTableDensity();
+      } else if (action === 'increase') {
+        store.increaseTableDensity();
+      }
+      
+      // Apply density to table (also updates button states)
+      renderer.applyTableDensity(store.getState().tableDensity);
+    });
+  }
 }
 
 /**

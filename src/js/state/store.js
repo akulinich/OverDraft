@@ -83,6 +83,7 @@ import { getSheetKey } from '../utils/parser.js';
  * @property {boolean} isLoading
  * @property {Map<string, Error>} errors
  * @property {'light'|'dark'} theme
+ * @property {import('../storage/persistence.js').TableDensity} tableDensity - Table row density
  * @property {'players'|'teams'|'draft'} activeTab - Currently active tab
  * @property {boolean} overfastLoaded - Whether OverFast API data is loaded
  * @property {boolean} overfastLoading - Whether OverFast API data is currently loading
@@ -111,6 +112,7 @@ let state = {
   isLoading: false,
   errors: new Map(),
   theme: 'dark',
+  tableDensity: 'comfortable',
   activeTab: 'players',
   overfastLoaded: false,
   overfastLoading: false,
@@ -197,7 +199,8 @@ export function initializeState() {
     ...state,
     configuredSheets: sheets,
     teamsSheet,
-    theme: settings.theme
+    theme: settings.theme,
+    tableDensity: settings.tableDensity || 'comfortable'
   };
   
   notify('init');
@@ -908,6 +911,58 @@ export function setTheme(theme) {
   state.theme = theme;
   saveSettings({ theme });
   notify('theme');
+}
+
+/**
+ * Table density levels in order
+ * @type {import('../storage/persistence.js').TableDensity[]}
+ */
+const DENSITY_LEVELS = ['compact', 'normal', 'comfortable'];
+
+/**
+ * Updates table density
+ * @param {import('../storage/persistence.js').TableDensity} density 
+ */
+export function setTableDensity(density) {
+  state.tableDensity = density;
+  saveSettings({ tableDensity: density });
+  notify('tableDensity');
+}
+
+/**
+ * Increases table density (smaller rows)
+ */
+export function decreaseTableDensity() {
+  const currentIdx = DENSITY_LEVELS.indexOf(state.tableDensity);
+  if (currentIdx > 0) {
+    setTableDensity(DENSITY_LEVELS[currentIdx - 1]);
+  }
+}
+
+/**
+ * Decreases table density (larger rows)
+ */
+export function increaseTableDensity() {
+  const currentIdx = DENSITY_LEVELS.indexOf(state.tableDensity);
+  if (currentIdx < DENSITY_LEVELS.length - 1) {
+    setTableDensity(DENSITY_LEVELS[currentIdx + 1]);
+  }
+}
+
+/**
+ * Checks if density can be decreased (made more compact)
+ * @returns {boolean}
+ */
+export function canDecreaseDensity() {
+  return DENSITY_LEVELS.indexOf(state.tableDensity) > 0;
+}
+
+/**
+ * Checks if density can be increased (made more comfortable)
+ * @returns {boolean}
+ */
+export function canIncreaseDensity() {
+  return DENSITY_LEVELS.indexOf(state.tableDensity) < DENSITY_LEVELS.length - 1;
 }
 
 /**

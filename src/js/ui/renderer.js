@@ -965,6 +965,43 @@ export function applyTheme(theme) {
 }
 
 /**
+ * Applies table density class
+ * @param {import('../storage/persistence.js').TableDensity} density 
+ */
+export function applyTableDensity(density) {
+  const table = document.getElementById('data-table');
+  if (!table) return;
+  
+  // Remove all density classes
+  table.classList.remove('density-compact', 'density-normal', 'density-comfortable');
+  
+  // Add the selected density class
+  table.classList.add(`density-${density}`);
+  
+  // Update button states
+  updateDensityButtonStates(density);
+}
+
+/**
+ * Updates density button disabled states
+ * @param {import('../storage/persistence.js').TableDensity} density 
+ */
+export function updateDensityButtonStates(density) {
+  const densityLevels = ['compact', 'normal', 'comfortable'];
+  const currentIdx = densityLevels.indexOf(density);
+  
+  const decreaseBtn = document.querySelector('.density-btn[data-density="decrease"]');
+  const increaseBtn = document.querySelector('.density-btn[data-density="increase"]');
+  
+  if (decreaseBtn) {
+    decreaseBtn.disabled = currentIdx <= 0;
+  }
+  if (increaseBtn) {
+    increaseBtn.disabled = currentIdx >= densityLevels.length - 1;
+  }
+}
+
+/**
  * Updates tabs visibility
  * @param {boolean} showTabs 
  */
