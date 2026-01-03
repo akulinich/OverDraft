@@ -146,8 +146,8 @@ export const REQUIRED_COLUMN_LABELS = {
 /** Role normalization patterns */
 const ROLE_PATTERNS = {
   tank: /^(танк|tanks?)/i,
-  dps: /^(дд|dd|dps|damage)/i,
-  support: /^(сапп?ы?|support|heal|саппорт)/i
+  dps: /^(дпс|дд|dd|dps|damage|дамаг)/i,
+  support: /^(сапп?ы?|суппорт|support|heal|хил)/i
 };
 
 /** @type {Set<StateListener>} */
