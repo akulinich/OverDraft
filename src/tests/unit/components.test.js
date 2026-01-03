@@ -6,20 +6,25 @@ vi.mock('../../js/i18n/index.js', () => ({
   isInitialized: () => true
 }));
 
-// Mock overfast API
-vi.mock('../../js/api/overfast.js', () => ({
-  getRole: () => null,
-  getHero: () => null,
-  parseHeroesString: () => [],
-  isLoaded: () => false
-}));
-
 // Mock ranks utility
 vi.mock('../../js/utils/ranks.js', () => ({
   getRankFromRating: () => null
 }));
 
-import { createElement } from '../../js/ui/components.js';
+// Mock overfast API with hoisted mock functions
+const mockGetRole = vi.fn(() => null);
+const mockGetHero = vi.fn(() => null);
+const mockParseHeroesString = vi.fn(() => []);
+const mockIsLoaded = vi.fn(() => false);
+
+vi.mock('../../js/api/overfast.js', () => ({
+  getRole: (...args) => mockGetRole(...args),
+  getHero: (...args) => mockGetHero(...args),
+  parseHeroesString: (...args) => mockParseHeroesString(...args),
+  isLoaded: (...args) => mockIsLoaded(...args)
+}));
+
+import { createElement, createHeroIconsContainer } from '../../js/ui/components.js';
 
 describe('createElement', () => {
   describe('basic functionality', () => {
@@ -173,3 +178,110 @@ describe('createElement', () => {
 });
 
 
+describe('createHeroIconsContainer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('when overfast is not loaded', () => {
+    beforeEach(() => {
+      mockIsLoaded.mockReturnValue(false);
+    });
+
+    it('returns container with text content when given a string', () => {
+      const container = createHeroIconsContainer('Ana, D.Va');
+      
+      expect(container.tagName).toBe('SPAN');
+      expect(container.className).toBe('hero-icons-container');
+      expect(container.textContent).toBe('Ana, D.Va');
+    });
+
+    it('returns empty container when given empty string', () => {
+      const container = createHeroIconsContainer('');
+      
+      expect(container.textContent).toBe('');
+    });
+
+    it('returns empty container when given null', () => {
+      const container = createHeroIconsContainer(null);
+      
+      expect(container.textContent).toBe('');
+    });
+  });
+
+  describe('when overfast is loaded', () => {
+    beforeEach(() => {
+      mockIsLoaded.mockReturnValue(true);
+    });
+
+    it('calls parseHeroesString with the original string value', () => {
+      const heroesString = 'Ana, D.Va, Soldier: 76';
+      mockParseHeroesString.mockReturnValue([]);
+      
+      createHeroIconsContainer(heroesString);
+      
+      // Verify parseHeroesString is called with the string, not an array
+      expect(mockParseHeroesString).toHaveBeenCalledWith(heroesString);
+      expect(mockParseHeroesString).toHaveBeenCalledTimes(1);
+    });
+
+    it('creates hero icon images when heroes are parsed', () => {
+      const mockHeroes = [
+        { key: 'ana', name: 'Ana', portrait: '/icons/heroes/ana.png' },
+        { key: 'dva', name: 'D.Va', portrait: '/icons/heroes/dva.png' }
+      ];
+      mockParseHeroesString.mockReturnValue(mockHeroes);
+      
+      const container = createHeroIconsContainer('Ana, D.Va');
+      
+      const images = container.querySelectorAll('img.hero-icon');
+      expect(images.length).toBe(2);
+      expect(images[0].getAttribute('src')).toBe('/icons/heroes/ana.png');
+      expect(images[1].getAttribute('src')).toBe('/icons/heroes/dva.png');
+    });
+
+    it('respects maxIcons option', () => {
+      const mockHeroes = [
+        { key: 'ana', name: 'Ana', portrait: '/icons/heroes/ana.png' },
+        { key: 'dva', name: 'D.Va', portrait: '/icons/heroes/dva.png' },
+        { key: 'mercy', name: 'Mercy', portrait: '/icons/heroes/mercy.png' }
+      ];
+      mockParseHeroesString.mockReturnValue(mockHeroes);
+      
+      const container = createHeroIconsContainer('Ana, D.Va, Mercy', { maxIcons: 2 });
+      
+      const images = container.querySelectorAll('img.hero-icon');
+      expect(images.length).toBe(2);
+      
+      const moreIndicator = container.querySelector('.hero-icons-more');
+      expect(moreIndicator).not.toBeNull();
+      expect(moreIndicator.textContent).toBe('+1');
+    });
+
+    it('falls back to text when no heroes are matched', () => {
+      mockParseHeroesString.mockReturnValue([]);
+      
+      const container = createHeroIconsContainer('Unknown Hero');
+      
+      expect(container.textContent).toBe('Unknown Hero');
+      expect(container.querySelectorAll('img').length).toBe(0);
+    });
+
+    it('does NOT accept pre-parsed hero array - expects string input', () => {
+      // This test documents the fix: createHeroIconsContainer expects a string,
+      // and internally calls parseHeroesString. Passing a pre-parsed array
+      // would be incorrect usage.
+      const heroesString = 'Ana, Mercy';
+      mockParseHeroesString.mockReturnValue([
+        { key: 'ana', name: 'Ana', portrait: '/icons/heroes/ana.png' }
+      ]);
+      
+      createHeroIconsContainer(heroesString);
+      
+      // The function should receive a string, not an array
+      const callArg = mockParseHeroesString.mock.calls[0][0];
+      expect(typeof callArg).toBe('string');
+      expect(Array.isArray(callArg)).toBe(false);
+    });
+  });
+});

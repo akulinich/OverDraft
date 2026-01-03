@@ -4,7 +4,7 @@
 
 import { createElement, escapeHtml, getRoleClass, getRatingClass, formatRelativeTime, createRoleIcon, createHeroIconsContainer, createRankBadge } from './components.js';
 import { validateTeamsData, formatValidationErrors, getSchemaDocumentation } from '../validation/schema.js';
-import { isLoaded as isOverfastLoaded, parseHeroesString } from '../api/overfast.js';
+import { isLoaded as isOverfastLoaded } from '../api/overfast.js';
 import * as store from '../state/store.js';
 import { getOrderedColumns } from '../storage/persistence.js';
 import { t } from '../i18n/index.js';
@@ -712,8 +712,7 @@ export function renderPlayerDetailsPanelWithConfig(player, headers, config, cont
       case 'heroes': {
         const heroesSection = createElement('div', { className: 'player-info-heroes' });
         heroesSection.appendChild(createElement('span', { className: 'stat-label' }, col.displayName));
-        const heroList = parseHeroesString(value);
-        const heroIcons = createHeroIconsContainer(heroList, { size: 'md', maxIcons: 10 });
+        const heroIcons = createHeroIconsContainer(value, { size: 'md', maxIcons: 10 });
         heroIcons.classList.add('heroes-list');
         heroesSection.appendChild(heroIcons);
         keyColumnsSection.appendChild(heroesSection);
