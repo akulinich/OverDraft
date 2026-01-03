@@ -1667,8 +1667,8 @@ body::before {
 .player-info-key-columns {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-md) var(--space-lg);
-  margin-bottom: var(--space-xl);
+  gap: var(--space-xs) var(--space-sm);
+  margin-bottom: var(--space-md);
 }
 
 /* Heroes section spans full width */
